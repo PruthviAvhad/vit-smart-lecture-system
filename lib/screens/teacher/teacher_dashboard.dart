@@ -18,21 +18,32 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   DateTime _selectedDate = DateTime.now();
 
-  // Getters for Firestore filtering
   String get _dayName => DateFormat('EEEE').format(_selectedDate);
   String get _dateString => DateFormat('yyyy-MM-dd').format(_selectedDate);
   String get _formattedDate => DateFormat('dd MMM, yyyy').format(_selectedDate);
 
+  // --- IMPROVED LOGOUT METHOD ---
+  Future<void> _handleLogout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+    if (context.mounted) {
+      // Clears all history and forces a return to the AuthWrapper/Login
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userEmail = FirebaseAuth.instance.currentUser?.email;
+    final user = FirebaseAuth.instance.currentUser;
+    final userEmail = user?.email;
+
+    if (userEmail == null) return const Scaffold(body: Center(child: Text("No Session Found")));
 
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('users').doc(userEmail).snapshots(),
       builder: (context, userSnap) {
         if (userSnap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: Center(child: CircularProgressIndicator(color: Colors.indigo)),
           );
         }
         if (!userSnap.hasData || !userSnap.data!.exists) {
@@ -52,9 +63,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
             title: const Text("Teacher Portal", 
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             backgroundColor: Colors.indigo[800],
-            elevation: 0,
             actions: [
-              // --- UPDATED: NOTIFICATION HISTORY WITH STRICT FILTERING ---
               IconButton(
                 icon: const Icon(Icons.history, color: Colors.white),
                 tooltip: "Broadcast History",
@@ -63,9 +72,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => NotificationInbox(
-                        // Pass teacher's email as topic to see direct messages 
-                        // and pass "Teacher" role to enable strict filtering
-                        userTopic: userEmail ?? "Teacher", 
+                        // Topic includes their ID to see messages meant for them specifically
+                        userTopic: "Teacher_$teacherId", 
                         userRole: "Teacher", 
                       ),
                     ),
@@ -74,7 +82,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               ),
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.white),
-                onPressed: () => FirebaseAuth.instance.signOut(),
+                onPressed: () => _handleLogout(context), // Use the new logout logic
               )
             ],
           ),
@@ -87,9 +95,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
           body: SingleChildScrollView( 
             child: Column(
               children: [
-                _buildHeader(userData, isAvailable, userEmail!),
+                _buildHeader(userData, isAvailable, userEmail),
                 
-                // Analytics Section
                 WorkloadStats(teacherId: teacherId, selectedDate: _selectedDate),
                 
                 _buildDateSection(),
@@ -100,15 +107,15 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Schedule for $_dayName", 
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                      const Icon(Icons.sort, color: Colors.grey),
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                      const Icon(Icons.calendar_view_day, size: 20, color: Colors.grey),
                     ],
                   ),
                 ),
 
-                // Schedule List
+                // Wrap LectureList in a ConstrainedBox or keep the SizedBox
                 SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.5,
+                  height: 400, // Fixed height or use LayoutBuilder
                   child: LectureList(
                     teacherId: teacherId,
                     teacherName: teacherName,
@@ -116,6 +123,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     dateString: _dateString,
                   ),
                 ),
+                const SizedBox(height: 80), // Padding for the FAB
               ],
             ),
           ),

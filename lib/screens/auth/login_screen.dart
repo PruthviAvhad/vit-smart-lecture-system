@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // Needed to detect Chrome
 import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,138 +13,158 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  /// Function to handle FCM Topic Subscriptions
-  Future<void> _setupNotificationTopics(Map<String, dynamic> userData) async {
-    // FIX: Push notifications setup varies on Web. 
-    // This check prevents the crash on Chrome.
-    if (kIsWeb) {
-      debugPrint("FCM Topic subscription skipped: Running on Web.");
+  /// Handles the login process
+  void _handleLogin() async {
+    // 1. Basic Validation
+    String email = _emailController.text.trim();
+    String password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showSnack("Please fill in all fields", Colors.orange);
       return;
     }
 
+    setState(() => _isLoading = true);
+
     try {
-      FirebaseMessaging messaging = FirebaseMessaging.instance;
-
-      // 1. Request Permission (Crucial for Android 13+ and iOS)
-      await messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-
-      // 2. Subscribe to Global Campus Alerts
-      await messaging.subscribeToTopic('all_campus');
-
-      String role = userData['role'] ?? "Student";
-
-      // 3. Role-Based Subscriptions
-      if (role == "Teacher") {
-        String officialId = userData['officialId']?.toString() ?? "";
-        if (officialId.isNotEmpty) {
-          await messaging.subscribeToTopic('Teacher_$officialId');
-          debugPrint("Subscribed to Teacher_$officialId");
+      // 2. Call AuthService
+      // AuthService should handle the Firebase signIn and role fetching
+      final userData = await AuthService().signIn(email, password);
+      
+      if (userData != null) {
+        if (mounted) {
+          _showSnack("Login Successful!", Colors.green);
+          
+          // --- THE CRITICAL FIX ---
+          // Even if you have an AuthWrapper, it is safer to explicitly 
+          // push to the root route and CLEAR the stack. 
+          // This forces the app to restart at the Dashboard/Wrapper state.
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
         }
-      } else if (role == "Student") {
-        String year = userData['year'] ?? "";
-        String div = userData['division'] ?? "";
-        if (year.isNotEmpty && div.isNotEmpty) {
-          String classTopic = '${year}_Div_$div';
-          await messaging.subscribeToTopic(classTopic);
-          debugPrint("Subscribed to $classTopic");
+      } else {
+        if (mounted) {
+          _showSnack("Invalid Credentials or User Not Found", Colors.red);
         }
       }
     } catch (e) {
-      debugPrint("Error setting up notifications: $e");
+      if (mounted) {
+        _showSnack("Login Error: Please check your connection", Colors.red);
+      }
+      debugPrint("Login error detail: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _handleLogin() async {
-    setState(() => _isLoading = true);
-
-    // Call the updated AuthService that returns the Firestore Map
-    final userData = await AuthService().signIn(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.bold)), 
+        backgroundColor: color,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
-    
-    if (userData != null && mounted) {
-      // Success: Setup notification topics
-      await _setupNotificationTopics(userData);
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Login Successful! Syncing notices..."), 
-          backgroundColor: Colors.green
-        ),
-      );
-
-      // Manual navigation if not using an AuthWrapper
-      // Navigator.pushReplacementNamed(context, '/dashboard');
-
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Invalid Credentials or User Not Found"), 
-          backgroundColor: Colors.red
-        ),
-      );
-    }
-    
-    if (mounted) setState(() => _isLoading = false);
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.all(24),
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.school_rounded, size: 80, color: Colors.blueAccent),
-                const SizedBox(height: 20),
-                const Text("VIT Smart Lecture", 
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                const Text("Resource Management System", 
-                  style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 40),
+                // Logo Section
+                const Icon(Icons.school_rounded, size: 100, color: Colors.indigo),
+                const SizedBox(height: 16),
+                const Text(
+                  "VIT Smart Lecture", 
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, letterSpacing: -1),
+                ),
+                const Text(
+                  "Resource Management System", 
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 48),
+
+                // Email Input
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
                     labelText: "Official Email", 
-                    prefixIcon: Icon(Icons.email_outlined),
-                    border: OutlineInputBorder()
+                    prefixIcon: const Icon(Icons.email_outlined, color: Colors.indigo),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+
+                // Password Input
                 TextField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _handleLogin(), // Allow login via "Enter" key
+                  decoration: InputDecoration(
                     labelText: "Password", 
-                    prefixIcon: Icon(Icons.lock_outline),
-                    border: OutlineInputBorder()
+                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.indigo),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 32),
+
+                // Login Button
                 _isLoading 
-                  ? const CircularProgressIndicator()
+                  ? const CircularProgressIndicator(color: Colors.indigo)
                   : ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 55),
-                        backgroundColor: Colors.blueAccent,
+                        minimumSize: const Size(double.infinity, 58),
+                        backgroundColor: Colors.indigo[900],
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10))
+                        elevation: 4,
+                        shadowColor: Colors.indigo.withOpacity(0.4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
                       onPressed: _handleLogin,
-                      child: const Text("Login to Dashboard", 
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        "Login to Dashboard",
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                      ),
                     ),
+                
+                const SizedBox(height: 24),
+                TextButton(
+                  onPressed: () {
+                    // Logic for forgot password if needed
+                  },
+                  child: const Text("Forgot Password?", style: TextStyle(color: Colors.indigo)),
+                ),
               ],
             ),
           ),

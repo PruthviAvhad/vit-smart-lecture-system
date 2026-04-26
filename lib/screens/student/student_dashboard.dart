@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
 import 'package:book_lec_app/widgets/student_schedule_list.dart';
 import '../common/notification_inbox.dart'; 
@@ -14,54 +15,116 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  
   DateTime _selectedDate = DateTime.now();
   bool _isBatchWise = true; 
+  String? _currentSubscription; 
 
   String get _dayName => DateFormat('EEEE').format(_selectedDate);
   String get _dateString => DateFormat('yyyy-MM-dd').format(_selectedDate);
 
+  /// --- 1. SUBSCRIPTION LOGIC ---
+  Future<void> _manageSubscription(String year, String division) async {
+    String newTopic = "${year}_Div_$division";
+    if (_currentSubscription == newTopic) return;
+
+    try {
+      if (_currentSubscription != null) {
+        await FirebaseMessaging.instance.unsubscribeFromTopic(_currentSubscription!);
+      }
+      await FirebaseMessaging.instance.subscribeToTopic(newTopic);
+      await FirebaseMessaging.instance.subscribeToTopic("all_campus");
+      
+      _currentSubscription = newTopic;
+      debugPrint("🔔 Live Sync: Subscribed to $newTopic");
+    } catch (e) {
+      debugPrint("❌ Subscription Sync Error: $e");
+    }
+  }
+
+  /// --- 2. CLEAN LOGOUT ---
+  Future<void> _handleLogout(String year, String division) async {
+    // Show a modern confirmation dialog first
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Logout"),
+        content: const Text("Do you want to sign out?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("No")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes")),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+
+    // Show loading overlay
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.indigo)),
+    );
+
+    try {
+      String classTopic = "${year}_Div_$division";
+      await FirebaseMessaging.instance.unsubscribeFromTopic(classTopic);
+      await FirebaseMessaging.instance.unsubscribeFromTopic("all_campus");
+      await _auth.signOut();
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // Dismiss loader
+        // Direct to login and clear stack
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    } catch (e) {
+      await _auth.signOut();
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Using current user's email as the document ID per your Firestore structure
-    final userEmail = FirebaseAuth.instance.currentUser?.email;
+    final userEmail = _auth.currentUser?.email;
 
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('users').doc(userEmail).snapshots(),
       builder: (context, userSnap) {
         if (userSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.indigo)));
         }
         
         if (!userSnap.hasData || !userSnap.data!.exists) {
-          return const Scaffold(body: Center(child: Text("Student profile not found.")));
+          return const Scaffold(body: Center(child: Text("Profile data sync error.")));
         }
 
         var userData = userSnap.data!.data() as Map<String, dynamic>;
-        
-        // Match Firestore field names exactly
         String year = userData['year']?.toString() ?? "";
         String division = userData['division']?.toString() ?? "";
         String batch = userData['batch']?.toString() ?? "All";
-
-        // Logic: Build the topic string (e.g., SY_Div_B)
         String classTopic = "${year}_Div_$division";
 
+        // FIX: Run subscription logic AFTER the frame is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _manageSubscription(year, division);
+        });
+
         return Scaffold(
-          backgroundColor: Colors.grey[50],
+          backgroundColor: Colors.white,
           appBar: AppBar(
             backgroundColor: Colors.indigo[900],
             elevation: 0,
             title: const Text("Student Portal", 
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             actions: [
-              // Notification Bell
               IconButton(
-                icon: const Icon(Icons.notifications_active_outlined, color: Colors.white),
+                icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      // UPDATED: Added userRole for strict privacy and duplicate removal
                       builder: (context) => NotificationInbox(
                         userTopic: classTopic, 
                         userRole: "Student",
@@ -71,8 +134,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 },
               ),
               IconButton(
-                icon: const Icon(Icons.logout, color: Colors.white),
-                onPressed: () => FirebaseAuth.instance.signOut(),
+                icon: const Icon(Icons.logout_rounded, color: Colors.white),
+                onPressed: () => _handleLogout(year, division),
               )
             ],
           ),
@@ -81,6 +144,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
               _buildHeader(userData),
               _buildDateSelector(),
               _buildViewToggle(), 
+              _buildLiveStatusIndicator(),
+
               Expanded(
                 child: StudentScheduleList(
                   year: year,
@@ -95,6 +160,23 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLiveStatusIndicator() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: Row(
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          const Text("Live Schedule Sync Active", 
+            style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 
@@ -122,9 +204,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Welcome, ${data['name'] ?? 'Student'}", 
+                Text("Hi, ${data['name'] ?? 'Student'}", 
                     style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text("PRN: ${data['prn'] ?? 'N/A'} | Div: ${data['division']}", 
+                Text("PRN: ${data['prn'] ?? 'N/A'} | Div: ${data['division']} | Batch: ${data['batch']}", 
                     style: TextStyle(color: Colors.indigo[100], fontSize: 13)),
               ],
             ),

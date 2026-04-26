@@ -21,28 +21,34 @@ class TimetableExplorer extends StatelessWidget {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // --- IMPROVED HISTORY LOGGING ---
+  /// --- UPDATED NOTIFICATION LOGIC ---
+  /// Now uses an array 'topics' to target both class and teacher simultaneously.
   static Future<void> _logToHistory({
     required String title,
     required String body,
-    required String topic,
+    required String classTopic, // e.g., "TY_B"
+    required String teacherId,  // e.g., "official_id_123"
   }) async {
-    // 1. Log for the Students/Teachers (Targeted Topic)
+    // Construct the specific teacher topic
+    String teacherTopic = "Teacher_$teacherId";
+
+    // 1. Log for the Students/Teachers (Targeted Topics)
     await _db.collection('notifications').add({
       'title': title,
       'body': body,
-      'topic': topic, 
+      // CRITICAL FIX: Use 'topics' as an array for array-contains queries
+      'topics': [classTopic, teacherTopic, 'all_campus'], 
       'senderRole': 'Admin',
-      'senderName': 'System Admin', // This ensures "By: Admin" shows up in UI
+      'senderName': 'System Admin',
       'timestamp': FieldValue.serverTimestamp(),
+      'category': 'Timetable Update',
     });
 
     // 2. Log for Global Admin Oversight (Internal Log)
-    // Changing topic to 'admin_logs' so it doesn't clutter the 'all_campus' board
     await _db.collection('notifications').add({
       'title': "[System] $title",
-      'body': "Target: $topic | $body",
-      'topic': "admin_logs", 
+      'body': "Targets: $classTopic, $teacherTopic | $body",
+      'topics': ["admin_logs"], 
       'senderRole': 'Admin',
       'senderName': 'System Admin',
       'timestamp': FieldValue.serverTimestamp(),
@@ -123,7 +129,7 @@ class TimetableExplorer extends StatelessWidget {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text("Delete Slot?"),
-                        content: const Text("Students will be notified of this cancellation."),
+                        content: const Text("Students and the teacher will be notified of this cancellation."),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
                           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
@@ -133,12 +139,13 @@ class TimetableExplorer extends StatelessWidget {
                     
                     if (confirm == true) {
                       String subName = await _fetchName('subjects', data['subjectId'], 'name');
-                      String targetTopic = "${selectedYear}_Div_$selectedDiv";
+                      String classTopic = "${selectedYear}_$selectedDiv"; // Format: TY_B
 
                       await _logToHistory(
                         title: "❌ Lecture Cancelled",
                         body: "$subName at ${data['startTime']} has been removed by Admin.",
-                        topic: targetTopic,
+                        classTopic: classTopic,
+                        teacherId: data['teacherId'] ?? "General",
                       );
 
                       await doc.reference.delete();
@@ -153,7 +160,7 @@ class TimetableExplorer extends StatelessWidget {
     );
   }
 
-  // --- TRIPLE CONFLICT VALIDATION ---
+  // --- CONFLICT VALIDATION ---
   static Future<String?> _validateBooking({
     required String teacherId,
     required String resourceId,
@@ -255,7 +262,7 @@ class TimetableExplorer extends StatelessWidget {
 
                   String subName = await _fetchName('subjects', sSub, 'name');
                   String roomNo = await _fetchRoomNo(sRoom);
-                  String targetTopic = "${year}_Div_$div";
+                  String classTopic = "${year}_$div"; // Format: TY_B
 
                   if (isEdit) {
                     if (doc!.reference.path.contains('extra_bookings')) p['date'] = dateStr;
@@ -264,7 +271,8 @@ class TimetableExplorer extends StatelessWidget {
                     await _logToHistory(
                       title: "🕒 Slot Updated",
                       body: "$subName moved to $sTime in $roomNo by Admin.",
-                      topic: targetTopic,
+                      classTopic: classTopic,
+                      teacherId: sTeacher!,
                     );
                   } else {
                     if (!isPermanent) p['date'] = dateStr;
@@ -273,7 +281,8 @@ class TimetableExplorer extends StatelessWidget {
                     await _logToHistory(
                       title: isPermanent ? "📅 Weekly Slot Added" : "✨ Extra Slot Added",
                       body: "New $subName scheduled at $sTime in $roomNo.",
-                      topic: targetTopic,
+                      classTopic: classTopic,
+                      teacherId: sTeacher!,
                     );
                   }
                   if (context.mounted) Navigator.pop(ctx);
