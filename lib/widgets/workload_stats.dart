@@ -17,7 +17,7 @@ class WorkloadStats extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         children: [
-          // Card 1: Today's Count
+          
           Expanded(
             child: _statCard(
               "Today",
@@ -27,7 +27,7 @@ class WorkloadStats extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 15),
-          // Card 2: Weekly Load
+         
           Expanded(
             child: _statCard(
               "Weekly Load",
@@ -41,7 +41,7 @@ class WorkloadStats extends StatelessWidget {
     );
   }
 
-  // Stream to count lectures for the selected day (Permanent + Extra)
+  
   Stream<int> _countStream(String day, String date) {
     var db = FirebaseFirestore.instance;
     return Stream.fromFuture(Future.wait([
@@ -50,7 +50,7 @@ class WorkloadStats extends StatelessWidget {
     ])).map((snaps) => snaps[0].docs.length + snaps[1].docs.length);
   }
 
-  // Stream to count total weekly master slots
+ 
   Stream<int> _weeklyStream() {
     return FirebaseFirestore.instance
         .collection('timetable')

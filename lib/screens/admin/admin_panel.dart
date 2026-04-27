@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'package:book_lec_app/widgets/timetable_explorer.dart';
 import 'package:book_lec_app/widgets/resource_manager_dialog.dart';
 import '../common/notification_inbox.dart'; 
-// Import the composer file here
 import '../admin/admin_message_composer.dart'; 
 
 class AdminPanel extends StatefulWidget {
@@ -18,21 +19,75 @@ class AdminPanel extends StatefulWidget {
 class _AdminPanelState extends State<AdminPanel> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Configuration
-  final List<String> _years = ["FE", "SE", "SY", "TE", "TY", "BE"];
+ 
+  final List<String> _years = ["FY", "SY", "TY", "Btech"];
   final List<String> _divisions = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
-
   final List<String> _allResources = [
     "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", 
     "R1", "R2", "R3", "R4", "R5", "R6", "R7", "T1", "T2"
   ];
 
-  // Filters & State
+ 
   String _selectedYear = "TY";
   String _selectedDiv = "B";
   String _selectedDay = DateFormat('EEEE').format(DateTime.now()); 
   DateTime _selectedDate = DateTime.now();
   String _activeSem = "SEM_6_2026";
+
+  
+  Future<void> _handleLogout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("Logout"),
+        content: const Text("Are you sure you want to end your admin session?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text("Logout")
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+
+    try {
+     
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.indigo)),
+        );
+      }
+
+     
+      if (!kIsWeb) {
+        try {
+          await FirebaseMessaging.instance.unsubscribeFromTopic("all_campus");
+          await FirebaseMessaging.instance.unsubscribeFromTopic("admin_alerts");
+        } catch (fcmErr) {
+          debugPrint("FCM Unsubscribe skipped: $fcmErr");
+        }
+      }
+      
+      await FirebaseAuth.instance.signOut();
+
+     
+      if (mounted) {
+        Navigator.of(context).pop(); 
+       
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    } catch (e) {
+      debugPrint("Logout Error: $e");
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,97 +96,74 @@ class _AdminPanelState extends State<AdminPanel> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        title: const Text("Admin Panel", 
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
+        centerTitle: false,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Admin Dashboard", 
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 20)),
+            Text(_activeSem.replaceAll("_", " "), 
+              style: const TextStyle(color: Colors.indigo, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
         actions: [
-          // 1. NEW: BROADCAST ICON
           IconButton(
-            icon: const Icon(Icons.campaign, color: Colors.orange, size: 28),
-            tooltip: "Broadcast New Notice",
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AdminMessageComposer()),
-              );
-            },
+            tooltip: "Global Announcement",
+            icon: const Icon(Icons.campaign_outlined, color: Colors.orange, size: 28),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminMessageComposer())),
           ),
-
-          // 2. NOTIFICATION HISTORY
           IconButton(
-            icon: const Icon(Icons.notifications_active_outlined, color: Colors.blueAccent, size: 26),
-            tooltip: "System Broadcast History",
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => NotificationInbox(
-                    userTopic: "all_campus", 
-                    userRole: "Admin", 
-                  ),
-                ),
-              );
-            },
+            tooltip: "Manage Resources",
+            icon: const Icon(Icons.inventory_2_outlined, color: Colors.indigo, size: 24), 
+            onPressed: () => showDialog(context: context, builder: (ctx) => ResourceManagerDialog(allResources: _allResources)),
           ),
-
-          // 3. RESOURCE SETTINGS
           IconButton(
-            icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent, size: 28), 
-            onPressed: () => showDialog(
-              context: context, 
-              builder: (ctx) => ResourceManagerDialog(allResources: _allResources)
-            ),
+            tooltip: "Logout",
+            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), 
+            onPressed: _handleLogout, 
           ),
-
-          // 4. LOGOUT
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent), 
-            onPressed: () => FirebaseAuth.instance.signOut()
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          TimetableExplorer.showEditDialog(
-            context, 
-            null,           // New slot
-            _selectedYear, 
-            _selectedDiv, 
-            _selectedDay, 
-            "09:00",        // Default start time
-            _activeSem, 
-            _selectedDate   
-          );
-        },
-        label: const Text("Add New Slot"),
-        icon: const Icon(Icons.add),
-        backgroundColor: Colors.blueAccent,
+        onPressed: () => TimetableExplorer.showEditDialog(
+          context, null, _selectedYear, _selectedDiv, _selectedDay, "09:00", _activeSem, _selectedDate
+        ),
+        label: const Text("Manual Override"),
+        icon: const Icon(Icons.add_moderator),
+        backgroundColor: Colors.indigo,
+        foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDateSelector(),
-            const SizedBox(height: 25),
-            
-            _sectionTitle("Timetable Explorer", "Schedules for $_selectedYear - $_selectedDiv"),
-            _buildGlobalFilters(),
-            const SizedBox(height: 15),
-            
-            TimetableExplorer(
-              selectedYear: _selectedYear,
-              selectedDiv: _selectedDiv,
-              selectedDay: _selectedDay,
-              activeSem: _activeSem,
-              selectedDate: _selectedDate,
-            ),
-            
-            const SizedBox(height: 80), // Space for FAB
-          ],
+      body: RefreshIndicator(
+        onRefresh: () async => setState(() {}), 
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDateSelector(),
+              const SizedBox(height: 25),
+              _sectionTitle("Timetable Explorer", "Viewing schedule for $_selectedYear - Div $_selectedDiv"),
+              _buildGlobalFilters(),
+              const SizedBox(height: 15),
+             
+              TimetableExplorer(
+                selectedYear: _selectedYear,
+                selectedDiv: _selectedDiv,
+                selectedDay: _selectedDay,
+                activeSem: _activeSem,
+                selectedDate: _selectedDate,
+              ),
+              const SizedBox(height: 100), 
+            ],
+          ),
         ),
       ),
     );
   }
+
+ 
 
   Widget _buildDateSelector() {
     return InkWell(
@@ -139,8 +171,12 @@ class _AdminPanelState extends State<AdminPanel> {
         DateTime? picked = await showDatePicker(
           context: context, 
           initialDate: _selectedDate, 
-          firstDate: DateTime(2025), 
-          lastDate: DateTime(2030)
+          firstDate: DateTime.now().subtract(const Duration(days: 30)), 
+          lastDate: DateTime(2030),
+          builder: (context, child) => Theme(
+            data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Colors.indigo)),
+            child: child!,
+          ),
         );
         if (picked != null) {
           setState(() {
@@ -152,17 +188,17 @@ class _AdminPanelState extends State<AdminPanel> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.05), 
+          color: Colors.indigo.withOpacity(0.05), 
           borderRadius: BorderRadius.circular(15), 
-          border: Border.all(color: Colors.blue.withOpacity(0.1))
+          border: Border.all(color: Colors.indigo.withOpacity(0.1))
         ),
         child: Row(children: [
-          const Icon(Icons.calendar_month, color: Colors.blue),
+          const Icon(Icons.calendar_today_rounded, color: Colors.indigo, size: 20),
           const SizedBox(width: 12),
-          Text(DateFormat('dd MMM yyyy (EEEE)').format(_selectedDate), 
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(DateFormat('EEEE, dd MMM yyyy').format(_selectedDate), 
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
           const Spacer(),
-          const Icon(Icons.edit, size: 18, color: Colors.grey),
+          const Icon(Icons.expand_more, size: 20, color: Colors.grey),
         ]),
       ),
     );
@@ -170,26 +206,29 @@ class _AdminPanelState extends State<AdminPanel> {
 
   Widget _buildGlobalFilters() => Row(children: [
     Expanded(child: _drop("Year", _selectedYear, _years, (v) => setState(() => _selectedYear = v!))),
-    const SizedBox(width: 8),
+    const SizedBox(width: 12),
     Expanded(child: _drop("Division", _selectedDiv, _divisions, (v) => setState(() => _selectedDiv = v!))),
   ]);
 
   Widget _sectionTitle(String t, String s) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(t, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    Text(s, style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
-    const SizedBox(height: 10),
+    Text(t, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+    Text(s, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+    const SizedBox(height: 12),
   ]);
 
   Widget _drop(String l, String v, List<String> i, Function(String?) o) {
     return DropdownButtonFormField<String>(
       value: v, 
-      items: i.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), 
+      items: i.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 14)))).toList(), 
       onChanged: o,
       decoration: InputDecoration(
         labelText: l, 
+        labelStyle: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.w500),
         filled: true, 
         fillColor: Colors.grey.shade50, 
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), 
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
       ),
     );
   }

@@ -21,28 +21,28 @@ class TimetableExplorer extends StatelessWidget {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // --- IMPROVED HISTORY LOGGING ---
   static Future<void> _logToHistory({
     required String title,
     required String body,
-    required String topic,
+    required String classTopic,
+    required String teacherId,
   }) async {
-    // 1. Log for the Students/Teachers (Targeted Topic)
+    String teacherTopic = "Teacher_$teacherId";
+
     await _db.collection('notifications').add({
       'title': title,
       'body': body,
-      'topic': topic, 
+      'topics': [classTopic, teacherTopic, 'all_campus'],
       'senderRole': 'Admin',
-      'senderName': 'System Admin', // This ensures "By: Admin" shows up in UI
+      'senderName': 'System Admin',
       'timestamp': FieldValue.serverTimestamp(),
+      'category': 'Timetable Update',
     });
 
-    // 2. Log for Global Admin Oversight (Internal Log)
-    // Changing topic to 'admin_logs' so it doesn't clutter the 'all_campus' board
     await _db.collection('notifications').add({
       'title': "[System] $title",
-      'body': "Target: $topic | $body",
-      'topic': "admin_logs", 
+      'body': "Targets: $classTopic, $teacherTopic | $body",
+      'topics': ["admin_logs"],
       'senderRole': 'Admin',
       'senderName': 'System Admin',
       'timestamp': FieldValue.serverTimestamp(),
@@ -68,7 +68,7 @@ class TimetableExplorer extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        
+
         List<DocumentSnapshot> allDocs = [];
         if (snapshot.hasData) {
           for (var snap in snapshot.data!) {
@@ -97,48 +97,55 @@ class TimetableExplorer extends StatelessWidget {
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15), 
-                side: BorderSide(color: isExtra ? Colors.orange.shade300 : Colors.grey.shade200, width: isExtra ? 2 : 1)
+                  borderRadius: BorderRadius.circular(15),
+                  side: BorderSide(color: isExtra ? Colors.orange.shade300 : Colors.grey.shade200, width: isExtra ? 2 : 1)
               ),
               child: ListTile(
                 onTap: () => showEditDialog(context, doc, selectedYear, selectedDiv, selectedDay, data['startTime'], activeSem, selectedDate),
                 leading: CircleAvatar(
-                  backgroundColor: isExtra ? Colors.orange.shade50 : Colors.blue.shade50, 
-                  child: Icon(isExtra ? Icons.star : Icons.book, color: isExtra ? Colors.orange : Colors.blue)
+                    backgroundColor: isExtra ? Colors.orange.shade50 : Colors.blue.shade50,
+                    child: Icon(isExtra ? Icons.star : Icons.book, color: isExtra ? Colors.orange : Colors.blue)
                 ),
                 title: Row(
                   children: [
-                    FutureBuilder<String>(
-                      future: _fetchName('subjects', data['subjectId'], 'name'),
-                      builder: (context, res) => Text(res.data ?? "...", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Flexible(
+                      child: FutureBuilder<String>(
+                        future: _fetchName('subjects', data['subjectId'], 'name'),
+                        builder: (context, res) => Text(
+                          res.data ?? "...",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                     if (isExtra) _tag("EXTRA", Colors.orange),
                   ],
                 ),
                 subtitle: _buildSlotSubtitle(data),
                 trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red), 
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
                   onPressed: () async {
                     bool? confirm = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text("Delete Slot?"),
-                        content: const Text("Students will be notified of this cancellation."),
+                        content: const Text("Students and the teacher will be notified."),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
                           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
                         ],
                       ),
                     );
-                    
+
                     if (confirm == true) {
                       String subName = await _fetchName('subjects', data['subjectId'], 'name');
-                      String targetTopic = "${selectedYear}_Div_$selectedDiv";
+                      String classTopic = "${selectedYear}_$selectedDiv";
 
                       await _logToHistory(
                         title: "❌ Lecture Cancelled",
-                        body: "$subName at ${data['startTime']} has been removed by Admin.",
-                        topic: targetTopic,
+                        body: "$subName at ${data['startTime']} removed.",
+                        classTopic: classTopic,
+                        teacherId: data['teacherId'] ?? "General",
                       );
 
                       await doc.reference.delete();
@@ -153,38 +160,6 @@ class TimetableExplorer extends StatelessWidget {
     );
   }
 
-  // --- TRIPLE CONFLICT VALIDATION ---
-  static Future<String?> _validateBooking({
-    required String teacherId,
-    required String resourceId,
-    required String startTime,
-    required String day,
-    required String dateStr,
-    required String division,
-    required String batch,
-    String? currentDocId,
-  }) async {
-    if (resourceId != "Online") {
-      var rReg = await _db.collection('timetable').where('day', isEqualTo: day).where('startTime', isEqualTo: startTime).where('resourceId', isEqualTo: resourceId).get();
-      var rExt = await _db.collection('extra_bookings').where('date', isEqualTo: dateStr).where('startTime', isEqualTo: startTime).where('resourceId', isEqualTo: resourceId).get();
-      if (rReg.docs.any((d) => d.id != currentDocId) || rExt.docs.any((d) => d.id != currentDocId)) return "Conflict: Room is already occupied.";
-    }
-
-    var tReg = await _db.collection('timetable').where('day', isEqualTo: day).where('startTime', isEqualTo: startTime).where('teacherId', isEqualTo: teacherId).get();
-    var tExt = await _db.collection('extra_bookings').where('date', isEqualTo: dateStr).where('startTime', isEqualTo: startTime).where('teacherId', isEqualTo: teacherId).get();
-    if (tReg.docs.any((d) => d.id != currentDocId) || tExt.docs.any((d) => d.id != currentDocId)) return "Conflict: Teacher is busy in another class.";
-
-    var bReg = await _db.collection('timetable').where('day', isEqualTo: day).where('startTime', isEqualTo: startTime).where('division', isEqualTo: division).get();
-    var bExt = await _db.collection('extra_bookings').where('date', isEqualTo: dateStr).where('startTime', isEqualTo: startTime).where('division', isEqualTo: division).get();
-    for (var d in [...bReg.docs, ...bExt.docs]) {
-      if (d.id == currentDocId) continue;
-      String exBatch = d['batch'] ?? "All";
-      if (exBatch == "All" || batch == "All" || exBatch == batch) return "Conflict: This division/batch already has a class.";
-    }
-    return null;
-  }
-
-  // --- EDIT / ADD DIALOG ---
   static void showEditDialog(BuildContext context, DocumentSnapshot? doc, String year, String div, String day, String? time, String sem, DateTime date) {
     bool isEdit = doc != null;
     Map<String, dynamic> data = isEdit ? (doc.data() as Map<String, dynamic>) : {};
@@ -204,7 +179,7 @@ class TimetableExplorer extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text(isEdit ? "Update Slot" : "Add New Slot"),
           content: SizedBox(
-            width: 500,
+            width: MediaQuery.of(context).size.width * 0.9,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 SwitchListTile(
@@ -237,46 +212,47 @@ class TimetableExplorer extends StatelessWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A237E), foregroundColor: Colors.white),
               onPressed: (sRoom == null || sSub == null || sTeacher == null) ? null : () async {
-                String? error = await _validateBooking(
-                  teacherId: sTeacher!, resourceId: sRoom!, startTime: sTime, 
-                  day: day, dateStr: dateStr, division: div, batch: sBatch!, currentDocId: doc?.id
-                );
-
-                if (error != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
-                } else {
-                  var p = {
-                    'subjectId': sSub, 'teacherId': sTeacher, 'resourceId': sRoom, 
-                    'batch': sBatch, 'startTime': sTime, 'day': day, 
-                    'year': year, 'division': div, 'semesterId': sem
+                try {
+                  final slotData = {
+                    'subjectId': sSub,
+                    'teacherId': sTeacher,
+                    'resourceId': sRoom,
+                    'startTime': sTime,
+                    'batch': sBatch,
+                    'year': year,
+                    'division': div,
+                    'semesterId': sem,
                   };
 
-                  String subName = await _fetchName('subjects', sSub, 'name');
-                  String roomNo = await _fetchRoomNo(sRoom);
-                  String targetTopic = "${year}_Div_$div";
+                  if (isPermanent) {
+                    slotData['day'] = day;
+                  } else {
+                    slotData['date'] = dateStr;
+                  }
 
                   if (isEdit) {
-                    if (doc!.reference.path.contains('extra_bookings')) p['date'] = dateStr;
-                    await doc.reference.update(p);
-                    
-                    await _logToHistory(
-                      title: "🕒 Slot Updated",
-                      body: "$subName moved to $sTime in $roomNo by Admin.",
-                      topic: targetTopic,
-                    );
+                    await doc!.reference.update(slotData);
                   } else {
-                    if (!isPermanent) p['date'] = dateStr;
-                    await _db.collection(isPermanent ? 'timetable' : 'extra_bookings').add(p);
-                    
-                    await _logToHistory(
-                      title: isPermanent ? "📅 Weekly Slot Added" : "✨ Extra Slot Added",
-                      body: "New $subName scheduled at $sTime in $roomNo.",
-                      topic: targetTopic,
-                    );
+                    String col = isPermanent ? 'timetable' : 'extra_bookings';
+                    await _db.collection(col).add(slotData);
                   }
+
+                  
+                  String subName = await _fetchName('subjects', sSub, 'name');
+                  String displayRoom = await _fetchRoomNo(sRoom); 
+                  
+                  await _logToHistory(
+                    title: isEdit ? "Updated Slot" : "New Slot Added",
+                    body: "$subName at $sTime in $displayRoom",
+                    classTopic: "${year}_$div",
+                    teacherId: sTeacher!,
+                  );
+
                   if (context.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  debugPrint("Save failed: $e");
                 }
               },
               child: const Text("Save Slot"),
@@ -287,7 +263,36 @@ class TimetableExplorer extends StatelessWidget {
     );
   }
 
-  // --- UI HELPERS ---
+  static Widget _buildAsyncDrop(String col, String field, String? val, Function(String?) onCh, {bool isTeacher = false}) {
+    return FutureBuilder<QuerySnapshot>(
+      future: isTeacher ? _db.collection(col).where('role', isEqualTo: 'teacher').get() : _db.collection(col).get(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const LinearProgressIndicator();
+        var items = snap.data!.docs.map((d) {
+          String id = isTeacher ? d['officialId'] : d.id;
+          return DropdownMenuItem(value: id, child: Text(d[field], overflow: TextOverflow.ellipsis));
+        }).toList();
+        return DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: items.any((i) => i.value == val) ? val : null,
+          items: items,
+          onChanged: onCh,
+          decoration: InputDecoration(labelText: "Select $col", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+        );
+      },
+    );
+  }
+
+  static Widget _simpleDrop(String l, String v, List<String> i, Function(String?) o) {
+    return DropdownButtonFormField<String>(
+      isExpanded: true,
+      value: i.contains(v) ? v : i.first,
+      items: i.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+      onChanged: o,
+      decoration: InputDecoration(labelText: l, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+    );
+  }
+
   static Widget _buildResourceMonitor(String day, String time, String? currentRoom, Function(String) onSelect, {String? docId}) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('timetable').where('day', isEqualTo: day).where('startTime', isEqualTo: time).snapshots(),
@@ -370,29 +375,5 @@ class TimetableExplorer extends StatelessWidget {
       var d = await _db.collection(col).doc(id).get();
       return d.exists ? d[field] : "Unknown";
     } catch (e) { return "Unknown"; }
-  }
-
-  static Widget _buildAsyncDrop(String col, String field, String? val, Function(String?) onCh, {bool isTeacher = false}) {
-    return FutureBuilder<QuerySnapshot>(
-      future: isTeacher ? _db.collection(col).where('role', isEqualTo: 'teacher').get() : _db.collection(col).get(),
-      builder: (context, snap) {
-        if (!snap.hasData) return const LinearProgressIndicator();
-        var items = snap.data!.docs.map((d) {
-          String id = isTeacher ? d['officialId'] : d.id;
-          return DropdownMenuItem(value: id, child: Text(d[field]));
-        }).toList();
-        return DropdownButtonFormField<String>(
-          isExpanded: true, value: items.any((i) => i.value == val) ? val : null, items: items, onChanged: onCh,
-          decoration: InputDecoration(labelText: "Select $col", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-        );
-      },
-    );
-  }
-
-  static Widget _simpleDrop(String l, String v, List<String> i, Function(String?) o) {
-    return DropdownButtonFormField<String>(
-      value: i.contains(v) ? v : i.first, items: i.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: o,
-      decoration: InputDecoration(labelText: l, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-    );
   }
 }

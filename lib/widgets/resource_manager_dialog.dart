@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
+import '../services/notification_service.dart';
+
 class ResourceManagerDialog extends StatefulWidget {
   final List<String> allResources;
   const ResourceManagerDialog({super.key, required this.allResources});
@@ -20,12 +23,14 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
     _initializeData();
   }
 
-  // Load all data ONCE at the start to prevent FutureBuilder flickering
   Future<void> _initializeData() async {
     try {
       final snapshot = await _db.collection('resources').get();
       final Map<String, String> existingData = {
-        for (var doc in snapshot.docs) doc.id: doc['currentRoomNo']?.toString() ?? ""
+        for (var doc in snapshot.docs) 
+          doc.id: (doc.data().containsKey('currentRoomNo')) 
+              ? doc['currentRoomNo']?.toString() ?? "" 
+              : ""
       };
 
       for (var resId in widget.allResources) {
@@ -49,29 +54,71 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
     super.dispose();
   }
 
+
+  Future<void> _saveRoom(String resId, String val) async {
+    final cleanVal = val.trim();
+    if (cleanVal.isEmpty) return;
+    
+    try {
+   
+      await _db.collection('resources').doc(resId).set(
+        {'currentRoomNo': cleanVal}, 
+        SetOptions(merge: true)
+      );
+
+     
+      await NotificationService.send(
+        title: "🏫 Room Location Update",
+        body: "Resource $resId is now mapped to Room $cleanVal.",
+        topics: ["Admin_Updates"], 
+        category: "System Update",
+        senderName: "Resource Manager",
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Resource $resId mapped to $cleanVal"),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(milliseconds: 1500),
+          ),
+        );
+        FocusScope.of(context).unfocus();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error saving: $e"), 
+            backgroundColor: Colors.red
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+   
     final filteredResources = widget.allResources.where((r) => r != "Online").toList();
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: const Row(
         children: [
-          Icon(Icons.meeting_room, color: Colors.blueAccent),
+          Icon(Icons.room_preferences, color: Colors.indigo),
           SizedBox(width: 10),
-          Text("Room Mapping", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text("Admin Room Mapping", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ],
       ),
       content: _isLoading
-          ? const SizedBox(
-              height: 200, 
-              child: Center(child: CircularProgressIndicator())
-            )
+          ? const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()))
           : SizedBox(
               width: double.maxFinite,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.6, // Prevents overflow
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
                 ),
                 child: ListView.separated(
                   shrinkWrap: true,
@@ -80,17 +127,16 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
                   itemBuilder: (context, index) {
                     String resId = filteredResources[index];
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      title: Text("Resource: $resId", 
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      title: Text("Resource ID: $resId", 
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)),
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: TextField(
                           controller: _controllers[resId],
                           style: const TextStyle(fontSize: 14),
                           decoration: InputDecoration(
-                            hintText: "Enter Room No (e.g. 1316A)",
-                            hintStyle: const TextStyle(fontSize: 12),
+                            hintText: "Assign Room (e.g. 1316A)",
                             isDense: true,
                             filled: true,
                             fillColor: Colors.grey.shade50,
@@ -100,7 +146,7 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
                               borderSide: BorderSide(color: Colors.grey.shade300),
                             ),
                             suffixIcon: IconButton(
-                              icon: const Icon(Icons.save, color: Colors.blueAccent, size: 20),
+                              icon: const Icon(Icons.check_circle, color: Colors.green, size: 22),
                               onPressed: () => _saveRoom(resId, _controllers[resId]!.text),
                             ),
                           ),
@@ -115,38 +161,9 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context), 
-          child: const Text("Done", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold))
+          child: const Text("Close", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))
         ),
       ],
     );
-  }
-
-  Future<void> _saveRoom(String resId, String val) async {
-    if (val.trim().isEmpty) return;
-    
-    try {
-      await _db.collection('resources').doc(resId).set(
-        {'currentRoomNo': val.trim()}, 
-        SetOptions(merge: true)
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Resource $resId mapped to $val"),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(milliseconds: 800),
-          ),
-        );
-        // Hide keyboard after saving
-        FocusScope.of(context).unfocus();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error saving room mapping"), backgroundColor: Colors.red),
-        );
-      }
-    }
   }
 }

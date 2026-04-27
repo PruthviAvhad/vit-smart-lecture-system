@@ -3,35 +3,62 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class NotificationInbox extends StatelessWidget {
-  final String userTopic; // The Class Name (e.g. SY_Div_A) or Teacher ID
-  final String userRole;  // "Admin", "Teacher", or "Student"
+  final String userTopic; 
+  final String userRole;  
 
   const NotificationInbox({
-    super.key, 
-    required this.userTopic, 
-    required this.userRole
+    super.key,
+    required this.userTopic,
+    required this.userRole,
   });
+
+  
+  String _cleanText(String text) {
+    final emojiPattern = RegExp(
+      r'[\u{1f300}-\u{1f5ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{1f700}-\u{1f77f}\u{1f900}-\u{1f9ff}\u{1f1e6}-\u{1f1ff}]',
+      unicode: true,
+    );
+    return text.replaceAll(emojiPattern, '').trim();
+  }
+
+  
+  IconData _getCategoryIcon(String? category) {
+    final cat = category?.toLowerCase() ?? '';
+    
+  
+    switch (cat) {
+      case 'lecture update':
+      case 'extra lecture':
+      case 'extra lecture added':
+        return Icons.add_circle_outline;
+      case 'lecture cancelled':
+        return Icons.cancel_outlined;
+      case 'exam':
+        return Icons.assignment_outlined;
+      case 'timetable update':
+      case 'weekly slot added':
+        return Icons.calendar_today_outlined;
+      default:
+        return Icons.notifications_none_rounded;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 1. Setup the query
-    Query query = FirebaseFirestore.instance.collection('notifications');
+    Query notificationQuery = FirebaseFirestore.instance.collection('notifications');
 
-    // 2. Apply Smart Filtering based on Role
-    // FIX: We now look for the specific topic OR 'all_campus' globally
-    if (userRole == "Teacher") {
-      query = query.where('topics', arrayContainsAny: ['Teacher_$userTopic', 'all_campus']);
-    } else if (userRole == "Student") {
-      query = query.where('topics', arrayContainsAny: [userTopic, 'all_campus']);
-    } 
-    // Note: Admin sees everything, so no 'where' clause is added for Admin.
+    if (userRole != "Admin") {
+      notificationQuery = notificationQuery.where('topics', arrayContainsAny: [
+        userTopic, 
+        'all_campus',
+        if (userRole == "Teacher") 'all_teachers',
+      ]);
+    }
 
-    // 3. Sort by Time (Descending)
-    // CRITICAL: Switching to arrayContainsAny requires a NEW Composite Index.
-    // Check your debug console for the new Firebase link.
-    query = query.orderBy('timestamp', descending: true);
+    notificationQuery = notificationQuery.orderBy('timestamp', descending: true);
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text("$userRole Notice Board"),
         backgroundColor: Colors.indigo[900],
@@ -40,128 +67,107 @@ class NotificationInbox extends StatelessWidget {
         centerTitle: true,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: query.snapshots(),
+        stream: notificationQuery.snapshots(),
         builder: (context, snapshot) {
-          // --- ERROR HANDLING ---
           if (snapshot.hasError) {
             return _buildErrorState(snapshot.error.toString());
           }
 
-          // --- LOADING STATE ---
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: Colors.indigo));
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final List<QueryDocumentSnapshot> docs = snapshot.data?.docs ?? [];
 
-          // --- EMPTY STATE ---
           if (docs.isEmpty) {
             return _buildEmptyState();
           }
 
-          // --- LIST VIEW ---
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              var data = docs[index].data() as Map<String, dynamic>;
-              
-              // Safe parsing for timestamp
-              DateTime time = (data['timestamp'] is Timestamp) 
-                  ? (data['timestamp'] as Timestamp).toDate() 
-                  : DateTime.now();
-
-              // UI Logic for Categories
-              String category = data['category'] ?? "General";
-              List topics = data['topics'] ?? [];
-              bool isGlobal = topics.contains("all_campus");
-              bool isSlot = category == "Slot";
-
-              Color accentColor = isGlobal ? Colors.orange[800]! : (isSlot ? Colors.blue[700]! : Colors.indigo);
-              Color bgColor = isGlobal ? Colors.orange[50]! : (isSlot ? Colors.blue[50]! : Colors.white);
-              IconData leadingIcon = isGlobal ? Icons.campaign : (isSlot ? Icons.event_available : Icons.notifications);
-
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: bgColor,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  side: BorderSide(color: accentColor.withOpacity(0.1), width: 1.5),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: accentColor.withOpacity(0.1),
-                            child: Icon(leadingIcon, color: accentColor, size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  data['title'] ?? "Notice",
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: -0.5),
-                                ),
-                                Text(
-                                  category.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 10, 
-                                    fontWeight: FontWeight.w900, 
-                                    color: accentColor,
-                                    letterSpacing: 0.5
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            DateFormat('hh:mm a').format(time),
-                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12.0),
-                        child: Divider(height: 1),
-                      ),
-                      Text(
-                        data['body'] ?? "",
-                        style: TextStyle(color: Colors.grey[800], fontSize: 14, height: 1.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.person_pin, size: 14, color: Colors.grey[600]),
-                              const SizedBox(width: 4),
-                              Text(
-                                "From: ${data['senderName'] ?? data['senderRole']}",
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey[700]),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            DateFormat('dd MMM yyyy').format(time),
-                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+          return RefreshIndicator(
+            onRefresh: () async => await Future.delayed(const Duration(milliseconds: 500)),
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final data = docs[index].data() as Map<String, dynamic>;
+                return _buildNotificationCard(data);
+              },
+            ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard(Map<String, dynamic> data) {
+    DateTime time = DateTime.now();
+    if (data['timestamp'] != null && data['timestamp'] is Timestamp) {
+      time = (data['timestamp'] as Timestamp).toDate();
+    }
+
+    final String cleanTitle = _cleanText(data['title'] ?? "Notice");
+    final String category = data['category'] ?? 'General';
+    
+   
+    final Color iconColor = category.toLowerCase().contains('cancelled') 
+        ? Colors.redAccent 
+        : Colors.indigo;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      elevation: 0,
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: CircleAvatar(
+          backgroundColor: iconColor.withOpacity(0.1),
+          child: Icon(_getCategoryIcon(category), color: iconColor, size: 22),
+        ),
+        title: Text(
+          cleanTitle,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        subtitle: Text(
+          "$category • ${DateFormat('hh:mm a').format(time)}",
+          style: const TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(),
+                const SizedBox(height: 8),
+                Text(
+                  _cleanText(data['body'] ?? ""),
+                  style: TextStyle(color: Colors.grey[800], fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "From: ${data['senderName'] ?? 'Admin'}",
+                      style: const TextStyle(
+                        fontSize: 11, 
+                        fontWeight: FontWeight.bold, 
+                        color: Colors.indigo
+                      ),
+                    ),
+                    Text(
+                      DateFormat('dd MMM yyyy').format(time),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -171,17 +177,11 @@ class NotificationInbox extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_awesome, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
+          Icon(Icons.mail_outline_rounded, size: 48, color: Colors.grey[300]),
+          const SizedBox(height: 12),
           Text(
-            "All Caught Up!",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[700]),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "No new notices for $userTopic right now.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[500]),
+            "Inbox is empty",
+            style: TextStyle(color: Colors.grey[500], fontSize: 14),
           ),
         ],
       ),
@@ -191,21 +191,16 @@ class NotificationInbox extends StatelessWidget {
   Widget _buildErrorState(String error) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(30.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off_rounded, color: Colors.redAccent, size: 50),
-            const SizedBox(height: 16),
-            const Text(
-              "Firestore Index Required",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 10),
+            const Icon(Icons.info_outline, color: Colors.orangeAccent, size: 30),
+            const SizedBox(height: 12),
             Text(
-              "The new search filter needs a Composite Index. Please click the blue link in your VS Code / Android Studio debug console to enable it.\n\n$error",
+              "Syncing issues: $error",
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),

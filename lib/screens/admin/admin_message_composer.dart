@@ -16,7 +16,7 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
   String _selectedTarget = "all_campus"; 
   bool _isSending = false;
 
-  // These topics match the logic in NotificationInbox
+  
   final List<String> _topics = [
     "all_campus",
     "TY_Div_A", "TY_Div_B", "TY_Div_C",
@@ -25,9 +25,9 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
   ];
 
   Future<void> _sendMessage() async {
-    if (_titleController.text.isEmpty || _bodyController.text.isEmpty) {
+    if (_titleController.text.trim().isEmpty || _bodyController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill all fields")),
+        const SnackBar(content: Text("Please fill all fields"), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -35,12 +35,18 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
     setState(() => _isSending = true);
 
     try {
-      // --- CRITICAL FIX FOR MULTI-ROLE VIEWING ---
-      // We save 'topics' as an array so that arrayContainsAny can find it
+      
+      List<String> targetTopics = [_selectedTarget];
+      
+     
+      if (_selectedTarget != "all_campus") {
+        targetTopics.add("admin_logs");
+      }
+
       await _db.collection('notifications').add({
         'title': _titleController.text.trim(),
         'body': _bodyController.text.trim(),
-        'topics': [_selectedTarget], // Must stay as a List [v]
+        'topics': targetTopics, 
         'category': _selectedTarget == "all_campus" ? "Global" : "Urgent",
         'timestamp': FieldValue.serverTimestamp(),
         'senderRole': 'Admin',
@@ -57,18 +63,17 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context); // Optional: Go back to Admin Panel after sending
+        Navigator.pop(context); 
       }
     } catch (e) {
-      debugPrint("Error sending message: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
-
-    if (mounted) setState(() => _isSending = false);
   }
 
   @override
@@ -77,68 +82,67 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Broadcast Notice", 
-          style: TextStyle(fontWeight: FontWeight.bold)),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         centerTitle: true,
         elevation: 0,
       ),
       body: SingleChildScrollView( 
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Select Target Audience", 
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            
+            _sectionHeader("Target Audience", Icons.groups_rounded),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               value: _selectedTarget,
-              items: _topics.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+              items: _topics.map((t) => DropdownMenuItem(
+                value: t, 
+                child: Text(t.replaceAll('_', ' ')), 
+              )).toList(),
               onChanged: (v) => setState(() => _selectedTarget = v!),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.grey[50],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-              ),
+              decoration: _inputDecoration(null),
             ),
-            const SizedBox(height: 25),
-            const Text("Notice Details", 
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            
+            const SizedBox(height: 30),
+            
+        
+            _sectionHeader("Notice Details", Icons.edit_note_rounded),
             const SizedBox(height: 10),
             TextField(
               controller: _titleController,
-              decoration: InputDecoration(
-                labelText: "Title",
-                hintText: "e.g., Exam Postponed",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              textCapitalization: TextCapitalization.sentences,
+              decoration: _inputDecoration("Title (e.g. Exam Schedule)"),
             ),
             const SizedBox(height: 20),
             TextField(
               controller: _bodyController,
-              maxLines: 6,
-              decoration: InputDecoration(
-                labelText: "Message Description",
+              maxLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: _inputDecoration("Message Description...").copyWith(
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
+            
             const SizedBox(height: 40),
+            
+          
             SizedBox(
               width: double.infinity,
               height: 55,
               child: ElevatedButton.icon(
                 onPressed: _isSending ? null : _sendMessage,
                 icon: _isSending 
-                  ? const SizedBox.shrink() 
+                  ? const SizedBox(
+                      width: 20, 
+                      height: 20, 
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                    )
                   : const Icon(Icons.send_rounded),
-                label: _isSending 
-                  ? const CircularProgressIndicator(color: Colors.white) 
-                  : const Text("Send Broadcast", 
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                label: Text(_isSending ? "Sending..." : "Send Broadcast", 
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.indigo[900],
                   foregroundColor: Colors.white,
@@ -149,6 +153,37 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.indigo[900], size: 20),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      ],
+    );
+  }
+
+  InputDecoration _inputDecoration(String? label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Colors.grey[50],
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.indigo.shade900, width: 2),
       ),
     );
   }

@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:book_lec_app/widgets/booking_sheet.dart';
 
-class LectureList extends StatelessWidget {
+class LectureList extends StatefulWidget {
   final String teacherId;
   final String teacherName;
   final String dayName;
@@ -17,65 +17,104 @@ class LectureList extends StatelessWidget {
     required this.dateString,
   });
 
-  // --- HELPER METHODS ---
+  @override
+  State<LectureList> createState() => _LectureListState();
+}
+
+class _LectureListState extends State<LectureList> {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  final Map<String, String> _subjectCache = {};
+  final Map<String, String> _roomCache = {};
 
   Future<String> _getSubjectFullName(String id) async {
+    if (id.isEmpty) return "Unknown Subject";
+
+    if (_subjectCache.containsKey(id)) {
+      return _subjectCache[id]!;
+    }
+
     try {
-      var doc = await FirebaseFirestore.instance.collection('subjects').doc(id).get();
-      return doc.data()?['name'] ?? id;
-    } catch (e) {
+      final doc = await _db.collection('subjects').doc(id).get();
+      final name = doc.data()?['name'] ?? id;
+      _subjectCache[id] = name;
+      return name;
+    } catch (_) {
       return id;
     }
   }
 
   Future<String> _getActualRoomNo(String id) async {
+    if (id.isEmpty) return "---";
     if (id == "ONLINE") return "ONLINE";
+
+    if (_roomCache.containsKey(id)) {
+      return _roomCache[id]!;
+    }
+
     try {
-      var doc = await FirebaseFirestore.instance.collection('resources').doc(id).get();
-      return doc.data()?['currentRoomNo']?.toString() ?? id;
-    } catch (e) {
+      final doc = await _db.collection('resources').doc(id).get();
+      final room = doc.data()?['currentRoomNo']?.toString() ?? id;
+      _roomCache[id] = room;
+      return room;
+    } catch (_) {
       return id;
     }
   }
 
-  // --- LOGIC METHODS ---
-
+  
   void _handleDelete(BuildContext context, String docId, bool isExtra) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isExtra ? "Delete Extra Booking?" : "Cancel Regular Lecture?"),
-        content: Text(isExtra 
-          ? "This will permanently remove this extra class record." 
-          : "This will mark this lecture as cancelled for $dateString only."),
+      builder: (_) => AlertDialog(
+        title: Text(
+          isExtra ? "Delete Extra Booking?" : "Cancel Regular Lecture?",
+        ),
+        content: Text(
+          isExtra
+              ? "This will permanently delete this extra lecture."
+              : "This will cancel this lecture only for ${widget.dateString}.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("No")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("No"),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
             onPressed: () async {
               if (isExtra) {
-                await FirebaseFirestore.instance.collection('extra_bookings').doc(docId).delete();
+                await _db.collection('extra_bookings').doc(docId).delete();
               } else {
-                await FirebaseFirestore.instance.collection('cancelled_lectures').add({
+                await _db
+                    .collection('cancelled_lectures')
+                    .doc("${docId}_${widget.dateString}")
+                    .set({
                   'lectureId': docId,
-                  'date': dateString,
+                  'date': widget.dateString,
                 });
               }
+
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text("Confirm", style: TextStyle(color: Colors.white)),
+            child: const Text(
+              "Confirm",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _handleRestore(String docId) async {
-    // Finds and deletes the cancellation record to make the lecture active again
-    var snap = await FirebaseFirestore.instance
+  
+  Future<void> _handleRestore(String docId) async {
+    final snap = await _db
         .collection('cancelled_lectures')
         .where('lectureId', isEqualTo: docId)
-        .where('date', isEqualTo: dateString)
+        .where('date', isEqualTo: widget.dateString)
         .get();
 
     for (var doc in snap.docs) {
@@ -83,132 +122,200 @@ class LectureList extends StatelessWidget {
     }
   }
 
-  void _openEditSheet(BuildContext context, Map<String, dynamic> data, String docId, bool isExtra) {
-    showModalBottomSheet(
+
+  Future<void> _openEditSheet(
+    BuildContext context,
+    Map<String, dynamic> data,
+    String docId,
+    bool isExtra,
+  ) async {
+    final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => BookingSheet(
-        teacherId: teacherId,
-        teacherName: teacherName,
-        selectedDate: dateString,
-        selectedDay: dayName,
-        editDocId: isExtra ? docId : null, 
+      builder: (_) => BookingSheet(
+        teacherId: widget.teacherId,
+        teacherName: widget.teacherName,
+        selectedDate: widget.dateString,
+        selectedDay: widget.dayName,
+
+     
+        editDocId: isExtra ? docId : null,
+
+    
+        originalLectureId: isExtra ? null : docId,
+
         initialData: data,
       ),
-    ).then((_) {
-      if (!isExtra) {
-         FirebaseFirestore.instance.collection('cancelled_lectures').add({
-            'lectureId': docId,
-            'date': dateString,
-         });
-      }
-    });
-  }
+    );
 
-  // --- UI COMPONENTS ---
+    if (result == true && !isExtra) {
+      await _db
+          .collection('cancelled_lectures')
+          .doc("${docId}_${widget.dateString}")
+          .set({
+        'lectureId': docId,
+        'date': widget.dateString,
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final FirebaseFirestore db = FirebaseFirestore.instance;
-
     return StreamBuilder<List<QuerySnapshot>>(
       stream: CombineLatestStream.list([
-        db.collection('timetable').where('teacherId', isEqualTo: teacherId).where('day', isEqualTo: dayName).snapshots(),
-        db.collection('extra_bookings').where('teacherId', isEqualTo: teacherId).where('date', isEqualTo: dateString).snapshots(),
-        db.collection('cancelled_lectures').where('date', isEqualTo: dateString).snapshots(),
+        _db
+            .collection('timetable')
+            .where('teacherId', isEqualTo: widget.teacherId)
+            .where('day', isEqualTo: widget.dayName)
+            .snapshots(),
+
+        _db
+            .collection('extra_bookings')
+            .where('teacherId', isEqualTo: widget.teacherId)
+            .where('date', isEqualTo: widget.dateString)
+            .snapshots(),
+
+        _db
+            .collection('cancelled_lectures')
+            .where('date', isEqualTo: widget.dateString)
+            .snapshots(),
       ]),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-        final cancelledIds = snapshot.data![2].docs.map((d) => d['lectureId'] as String).toSet();
-        
-        // We keep all slots; we don't filter them out anymore.
-        final allSlots = [...snapshot.data![0].docs, ...snapshot.data![1].docs];
+        final timetableDocs = snapshot.data![0].docs;
+        final extraDocs = snapshot.data![1].docs;
+        final cancelDocs = snapshot.data![2].docs;
 
-        allSlots.sort((a, b) => (a['startTime'] ?? "").compareTo(b['startTime'] ?? ""));
+        final cancelledIds =
+            cancelDocs.map((e) => e['lectureId'] as String).toSet();
 
-        if (allSlots.isEmpty) {
-          return const Center(child: Text("No lectures scheduled for today."));
+        final allLectures = [...timetableDocs, ...extraDocs];
+
+        allLectures.sort(
+          (a, b) =>
+              (a['startTime'] ?? "").compareTo(b['startTime'] ?? ""),
+        );
+
+        if (allLectures.isEmpty) {
+          return const Center(
+            child: Text("No lectures scheduled today."),
+          );
         }
 
         return ListView.builder(
-          itemCount: allSlots.length,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          itemCount: allLectures.length,
           itemBuilder: (context, index) {
-            var doc = allSlots[index];
-            var data = doc.data() as Map<String, dynamic>;
-            bool isCancelled = cancelledIds.contains(doc.id);
-            bool isExtra = data.containsKey('type') && data['type'] == 'Extra';
-            bool isOnline = data['isOnline'] ?? false;
+            final doc = allLectures[index];
+            final data = doc.data() as Map<String, dynamic>;
+
+            final bool isExtra = data['type'] == 'Extra';
+            final bool isCancelled = cancelledIds.contains(doc.id);
+            final bool isOnline = data['isOnline'] ?? false;
 
             return FutureBuilder<List<String>>(
               future: Future.wait([
                 _getSubjectFullName(data['subjectId'] ?? ""),
                 _getActualRoomNo(data['resourceId'] ?? ""),
               ]),
-              builder: (context, nameSnap) {
-                String subjectName = nameSnap.data?[0] ?? "Loading...";
-                String roomNo = isOnline ? "ONLINE" : (nameSnap.data?[1] ?? "...");
+              builder: (context, snap) {
+                final subject = snap.data?[0] ?? "Loading...";
+                final room =
+                    isOnline ? "ONLINE" : (snap.data?[1] ?? "...");
 
                 return Opacity(
-                  opacity: isCancelled ? 0.6 : 1.0, // Fade out if cancelled
+                  opacity: isCancelled ? 0.6 : 1,
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: isCancelled ? Colors.grey[100] : Colors.white,
+                      color:
+                          isCancelled ? Colors.grey[100] : Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
-                      border: isCancelled ? Border.all(color: Colors.grey[300]!) : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              Colors.black.withOpacity(0.03),
+                          blurRadius: 10,
+                        ),
+                      ],
                     ),
                     child: ListTile(
-                      contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 4, bottom: 4),
-                      leading: _buildTimeLeading(data['startTime'] ?? "--", isCancelled),
+                      leading: _buildTimeBox(
+                        data['startTime'] ?? "--",
+                        isCancelled,
+                      ),
                       title: Text(
-                        "$subjectName (${data['division'] ?? 'All'})",
+                        "$subject (${data['division']})",
                         style: TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          fontSize: 14,
-                          decoration: isCancelled ? TextDecoration.lineThrough : null,
-                          color: isCancelled ? Colors.grey[600] : Colors.black,
+                          fontWeight: FontWeight.bold,
+                          decoration: isCancelled
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
                       ),
                       subtitle: Text(
-                        isCancelled ? "LECTURE CANCELLED" : "Room: $roomNo | Batch: ${data['batch'] ?? 'All'}",
-                        style: TextStyle(
-                          color: isCancelled ? Colors.red[300] : Colors.grey[600], 
-                          fontSize: 12,
-                          fontWeight: isCancelled ? FontWeight.bold : FontWeight.normal,
-                        ),
+                        isCancelled
+                            ? "LECTURE CANCELLED"
+                            : "Room: $room | Batch: ${data['batch'] ?? 'All'}",
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (isExtra && !isCancelled) _buildExtraBadge(),
-                          
+                          if (isExtra && !isCancelled)
+                            _buildExtraBadge(),
+
                           if (isCancelled)
-                            // RESTORE BUTTON
                             IconButton(
-                              icon: const Icon(Icons.restore, color: Colors.indigo),
-                              onPressed: () => _handleRestore(doc.id),
-                              tooltip: "Make Active",
+                              icon: const Icon(
+                                Icons.restore,
+                                color: Colors.indigo,
+                              ),
+                              onPressed: () =>
+                                  _handleRestore(doc.id),
                             )
                           else
-                            // OPTIONS MENU
                             PopupMenuButton<String>(
-                              icon: const Icon(Icons.more_vert, size: 20),
                               onSelected: (val) {
-                                if (val == 'edit') _openEditSheet(context, data, doc.id, isExtra);
-                                if (val == 'delete') _handleDelete(context, doc.id, isExtra);
+                                if (val == 'edit') {
+                                  _openEditSheet(
+                                    context,
+                                    data,
+                                    doc.id,
+                                    isExtra,
+                                  );
+                                }
+
+                                if (val == 'delete') {
+                                  _handleDelete(
+                                    context,
+                                    doc.id,
+                                    isExtra,
+                                  );
+                                }
                               },
-                              itemBuilder: (context) => [
+                              itemBuilder: (_) => [
                                 PopupMenuItem(
                                   value: 'edit',
-                                  child: Text(isExtra ? "Edit Booking" : "Reschedule"),
+                                  child: Text(
+                                    isExtra
+                                        ? "Edit Booking"
+                                        : "Reschedule",
+                                  ),
                                 ),
                                 PopupMenuItem(
                                   value: 'delete',
-                                  child: Text(isExtra ? "Delete Extra" : "Cancel for Today"),
+                                  child: Text(
+                                    isExtra
+                                        ? "Delete Extra"
+                                        : "Cancel for Today",
+                                  ),
                                 ),
                               ],
                             ),
@@ -225,32 +332,48 @@ class LectureList extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeLeading(String time, bool isCancelled) {
+  Widget _buildTimeBox(String time, bool cancelled) {
     return Container(
-      width: 55, height: 55,
+      width: 55,
+      height: 55,
       decoration: BoxDecoration(
-        color: isCancelled ? Colors.grey[200] : Colors.indigo[50], 
-        borderRadius: BorderRadius.circular(10)
+        color:
+            cancelled ? Colors.grey[200] : Colors.indigo[50],
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Center(
         child: Text(
-          time, 
+          time,
           style: TextStyle(
-            fontWeight: FontWeight.bold, 
-            color: isCancelled ? Colors.grey[500] : Colors.indigo[900], 
-            fontSize: 13
-          )
-        )
+            fontWeight: FontWeight.bold,
+            color: cancelled
+                ? Colors.grey
+                : Colors.indigo[900],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildExtraBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       margin: const EdgeInsets.only(right: 4),
-      decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(6)),
-      child: Text("EXTRA", style: TextStyle(color: Colors.orange[800], fontSize: 9, fontWeight: FontWeight.bold)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        "EXTRA",
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: Colors.orange[800],
+        ),
+      ),
     );
   }
 }

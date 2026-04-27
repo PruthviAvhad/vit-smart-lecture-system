@@ -8,7 +8,7 @@ class StudentScheduleList extends StatelessWidget {
   final String batch;
   final String dayName;
   final String dateString;
-  final bool isBatchWise; // NEW: Toggle state from Dashboard
+  final bool isBatchWise; 
 
   const StudentScheduleList({
     super.key,
@@ -17,10 +17,10 @@ class StudentScheduleList extends StatelessWidget {
     required this.batch,
     required this.dayName,
     required this.dateString,
-    required this.isBatchWise, // NEW
+    required this.isBatchWise, 
   });
 
-  // Helper: Fetch Subject Name
+  
   Future<String> _getSubjectName(String id) async {
     try {
       var doc = await FirebaseFirestore.instance.collection('subjects').doc(id).get();
@@ -30,7 +30,7 @@ class StudentScheduleList extends StatelessWidget {
     }
   }
 
-  // Helper: Fetch Room Name
+
   Future<String> _getRoomName(String id) async {
     if (id.toUpperCase() == "ONLINE") return "Online Class";
     try {
@@ -41,7 +41,7 @@ class StudentScheduleList extends StatelessWidget {
     }
   }
 
-  // NEW Helper: Fetch Teacher Name
+  
   Future<String> _getTeacherName(String id) async {
     try {
       var snap = await FirebaseFirestore.instance
@@ -64,17 +64,17 @@ class StudentScheduleList extends StatelessWidget {
 
     return StreamBuilder<List<QuerySnapshot>>(
       stream: CombineLatestStream.list([
-        // 1. Master Timetable
+     
         db.collection('timetable')
             .where('year', isEqualTo: year)
             .where('division', isEqualTo: division)
             .where('day', isEqualTo: dayName).snapshots(),
-        // 2. Extra Bookings
+       
         db.collection('extra_bookings')
             .where('year', isEqualTo: year)
             .where('division', isEqualTo: division)
             .where('date', isEqualTo: dateString).snapshots(),
-        // 3. Cancelled list
+     
         db.collection('cancelled_lectures')
             .where('date', isEqualTo: dateString).snapshots(),
       ]),
@@ -87,14 +87,14 @@ class StudentScheduleList extends StatelessWidget {
 
         final cancelledIds = snapshot.data![2].docs.map((d) => d['lectureId']).toSet();
 
-        // MERGE & FILTER LOGIC
+     
         final allSlots = [...snapshot.data![0].docs, ...snapshot.data![1].docs]
             .where((doc) => !cancelledIds.contains(doc.id))
             .where((doc) {
-              // If "Division Wise" is selected, show everything.
+             
               if (!isBatchWise) return true;
               
-              // If "Batch Wise" is selected, show only "All" or student's specific batch.
+             
               String b = doc['batch'] ?? "All";
               return b == "All" || b == batch;
             }).toList();
@@ -127,7 +127,7 @@ class StudentScheduleList extends StatelessWidget {
               future: Future.wait([
                 _getSubjectName(data['subjectId'] ?? ""),
                 _getRoomName(data['resourceId'] ?? ""),
-                _getTeacherName(data['teacherId'] ?? ""), // Fetching teacher
+                _getTeacherName(data['teacherId'] ?? ""), 
               ]),
               builder: (context, nameSnap) {
                 String subName = nameSnap.data?[0] ?? "Loading...";
@@ -139,14 +139,14 @@ class StudentScheduleList extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(15),
-                    // Visual cue: Light border for other batches in Division View
+                  
                     border: (!isBatchWise && !isPersonalBatch) 
                         ? Border.all(color: Colors.grey.shade200) 
                         : null,
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
                   ),
                   child: Opacity(
-                    // Dim lectures that aren't yours when in Division View
+              
                     opacity: (!isBatchWise && !isPersonalBatch) ? 0.5 : 1.0,
                     child: ListTile(
                       contentPadding: const EdgeInsets.all(12),
