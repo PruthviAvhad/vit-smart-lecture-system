@@ -19,7 +19,6 @@ class AdminPanel extends StatefulWidget {
 class _AdminPanelState extends State<AdminPanel> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Configuration
   final List<String> _years = ["FY", "SY", "TY", "Btech"];
   final List<String> _divisions = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
   final List<String> _allResources = [
@@ -27,14 +26,12 @@ class _AdminPanelState extends State<AdminPanel> {
     "R1", "R2", "R3", "R4", "R5", "R6", "R7", "T1", "T2"
   ];
 
-  // Filters & State
   String _selectedYear = "TY";
   String _selectedDiv = "B";
   String _selectedDay = DateFormat('EEEE').format(DateTime.now()); 
   DateTime _selectedDate = DateTime.now();
   String _activeSem = "SEM_6_2026";
 
-  /// --- BULLETPROOF LOGOUT LOGIC ---
   Future<void> _handleLogout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -56,7 +53,6 @@ class _AdminPanelState extends State<AdminPanel> {
     if (!confirm) return;
 
     try {
-      // 1. Show loading overlay
       if (mounted) {
         showDialog(
           context: context,
@@ -65,7 +61,6 @@ class _AdminPanelState extends State<AdminPanel> {
         );
       }
 
-      // 2. Cleanup Push Notifications (Unsubscribe from Admin/Global topics)
       if (!kIsWeb) {
         try {
           await FirebaseMessaging.instance.unsubscribeFromTopic("all_campus");
@@ -75,13 +70,10 @@ class _AdminPanelState extends State<AdminPanel> {
         }
       }
       
-      // 3. Clear FirebaseAuth session
       await FirebaseAuth.instance.signOut();
 
-      // 4. Navigate to Login and CLEAR ALL STACKS
       if (mounted) {
-        Navigator.of(context).pop(); // Dismiss loader
-        // Ensure '/login' is defined in your main.dart routes
+        Navigator.of(context).pop(); 
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
       }
     } catch (e) {
@@ -148,7 +140,6 @@ class _AdminPanelState extends State<AdminPanel> {
               _sectionTitle("Timetable Explorer", "Viewing schedule for $_selectedYear - Div $_selectedDiv"),
               _buildGlobalFilters(),
               const SizedBox(height: 15),
-              // Main Schedule Component
               TimetableExplorer(
                 selectedYear: _selectedYear,
                 selectedDiv: _selectedDiv,
@@ -163,8 +154,6 @@ class _AdminPanelState extends State<AdminPanel> {
       ),
     );
   }
-
-  // --- UI COMPONENTS ---
 
   Widget _buildDateSelector() {
     return InkWell(

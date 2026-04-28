@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class NotificationInbox extends StatelessWidget {
-  final String userTopic; // e.g., "SY_B" or "Teacher_ID"
-  final String userRole;  // "Admin", "Teacher", or "Student"
+  final String userTopic; 
+  final String userRole;  
 
   const NotificationInbox({
     super.key,
@@ -14,11 +14,8 @@ class NotificationInbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Define the Query
     Query notificationQuery = FirebaseFirestore.instance.collection('notifications');
 
-    // 2. Role-Based Filtering
-    // Admin sees everything. Others see specific topics + global campus news.
     if (userRole != "Admin") {
       notificationQuery = notificationQuery.where('topics', arrayContainsAny: [
         userTopic, 
@@ -27,7 +24,6 @@ class NotificationInbox extends StatelessWidget {
       ]);
     }
 
-    // 3. Sorting (Requires Composite Index in Firebase)
     notificationQuery = notificationQuery.orderBy('timestamp', descending: true);
 
     return Scaffold(
@@ -42,24 +38,20 @@ class NotificationInbox extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: notificationQuery.snapshots(),
         builder: (context, snapshot) {
-          // --- Error State ---
           if (snapshot.hasError) {
             return _buildErrorState(snapshot.error.toString());
           }
 
-          // --- Loading State ---
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.indigo));
           }
 
           final List<QueryDocumentSnapshot> docs = snapshot.data?.docs ?? [];
 
-          // --- Empty State ---
           if (docs.isEmpty) {
             return _buildEmptyState();
           }
 
-          // --- List of Notices ---
           return RefreshIndicator(
             onRefresh: () async => await Future.delayed(const Duration(milliseconds: 500)),
             child: ListView.builder(
@@ -77,7 +69,6 @@ class NotificationInbox extends StatelessWidget {
   }
 
   Widget _buildNotificationCard(Map<String, dynamic> data) {
-    // Safe timestamp parsing
     DateTime time = DateTime.now();
     if (data['timestamp'] != null && data['timestamp'] is Timestamp) {
       time = (data['timestamp'] as Timestamp).toDate();
@@ -93,7 +84,7 @@ class NotificationInbox extends StatelessWidget {
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: const CircleAvatar(
-          backgroundColor: Color(0xFFE8EAF6), // Light Indigo
+          backgroundColor: Color(0xFFE8EAF6),
           child: Icon(Icons.notifications_active, color: Colors.indigo, size: 20),
         ),
         title: Text(

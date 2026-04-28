@@ -16,7 +16,6 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
   String _selectedTarget = "all_campus"; 
   bool _isSending = false;
 
-  // These topics match the logic used in Student and Teacher Dashboards
   final List<String> _topics = [
     "all_campus",
     "TY_Div_A", "TY_Div_B", "TY_Div_C",
@@ -35,13 +34,8 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
     setState(() => _isSending = true);
 
     try {
-      // --- THE MULTI-TARGET LOGIC ---
-      // We create a list of topics. 
-      // If it's a specific class notice, we also include 'admin_logs' for history.
       List<String> targetTopics = [_selectedTarget];
       
-      // If it's an important notice, we can add 'all_campus' to ensure 
-      // even teachers/admins see it in their main feed.
       if (_selectedTarget != "all_campus") {
         targetTopics.add("admin_logs");
       }
@@ -49,7 +43,7 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
       await _db.collection('notifications').add({
         'title': _titleController.text.trim(),
         'body': _bodyController.text.trim(),
-        'topics': targetTopics, // Array format for Firestore array-contains query
+        'topics': targetTopics, 
         'category': _selectedTarget == "all_campus" ? "Global" : "Urgent",
         'timestamp': FieldValue.serverTimestamp(),
         'senderRole': 'Admin',
@@ -96,14 +90,13 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Target Selection Header
             _sectionHeader("Target Audience", Icons.groups_rounded),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               value: _selectedTarget,
               items: _topics.map((t) => DropdownMenuItem(
                 value: t, 
-                child: Text(t.replaceAll('_', ' ')), // cleaner text formatting
+                child: Text(t.replaceAll('_', ' ')), 
               )).toList(),
               onChanged: (v) => setState(() => _selectedTarget = v!),
               decoration: _inputDecoration(null),
@@ -111,7 +104,6 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
             
             const SizedBox(height: 30),
             
-            // Details Header
             _sectionHeader("Notice Details", Icons.edit_note_rounded),
             const SizedBox(height: 10),
             TextField(
@@ -131,7 +123,6 @@ class _AdminMessageComposerState extends State<AdminMessageComposer> {
             
             const SizedBox(height: 40),
             
-            // Action Button
             SizedBox(
               width: double.infinity,
               height: 55,

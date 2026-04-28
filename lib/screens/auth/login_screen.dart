@@ -13,9 +13,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  /// Handles the login process
   void _handleLogin() async {
-    // 1. Basic Validation
     String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
@@ -27,18 +25,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 2. Call AuthService
-      // AuthService should handle the Firebase signIn and role fetching
       final userData = await AuthService().signIn(email, password);
       
       if (userData != null) {
         if (mounted) {
           _showSnack("Login Successful!", Colors.green);
-          
-          // --- THE CRITICAL FIX ---
-          // Even if you have an AuthWrapper, it is safer to explicitly 
-          // push to the root route and CLEAR the stack. 
-          // This forces the app to restart at the Dashboard/Wrapper state.
           Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
         }
       } else {
@@ -87,7 +78,6 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo Section
                 const Icon(Icons.school_rounded, size: 100, color: Colors.indigo),
                 const SizedBox(height: 16),
                 const Text(
@@ -100,7 +90,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // Email Input
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -119,12 +108,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Password Input
                 TextField(
                   controller: _passwordController,
                   obscureText: true,
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _handleLogin(), // Allow login via "Enter" key
+                  onSubmitted: (_) => _handleLogin(),
                   decoration: InputDecoration(
                     labelText: "Password", 
                     prefixIcon: const Icon(Icons.lock_outline, color: Colors.indigo),
@@ -139,7 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Login Button
                 _isLoading 
                   ? const CircularProgressIndicator(color: Colors.indigo)
                   : ElevatedButton(
@@ -161,7 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
                 TextButton(
                   onPressed: () {
-                    // Logic for forgot password if needed
                   },
                   child: const Text("Forgot Password?", style: TextStyle(color: Colors.indigo)),
                 ),

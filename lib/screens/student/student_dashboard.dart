@@ -24,7 +24,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
   String get _dayName => DateFormat('EEEE').format(_selectedDate);
   String get _dateString => DateFormat('yyyy-MM-dd').format(_selectedDate);
 
-  /// --- 1. SUBSCRIPTION LOGIC ---
   Future<void> _manageSubscription(String year, String division) async {
     String newTopic = "${year}_Div_$division";
     if (_currentSubscription == newTopic) return;
@@ -43,9 +42,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
-  /// --- 2. CLEAN LOGOUT ---
   Future<void> _handleLogout(String year, String division) async {
-    // Show a modern confirmation dialog first
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -60,7 +57,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
     if (!confirm) return;
 
-    // Show loading overlay
     if (!mounted) return;
     showDialog(
       context: context,
@@ -75,8 +71,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       await _auth.signOut();
       
       if (mounted) {
-        Navigator.of(context).pop(); // Dismiss loader
-        // Direct to login and clear stack
+        Navigator.of(context).pop(); 
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
       }
     } catch (e) {
@@ -106,7 +101,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
         String batch = userData['batch']?.toString() ?? "All";
         String classTopic = "${year}_Div_$division";
 
-        // FIX: Run subscription logic AFTER the frame is built
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _manageSubscription(year, division);
         });

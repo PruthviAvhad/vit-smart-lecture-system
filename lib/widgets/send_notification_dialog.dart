@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 
 class SendNotificationDialog extends StatefulWidget {
-  final String senderRole; // Pass 'Admin' or 'Prof. Name'
-  final bool isAdmin;      // Admins see all classes, Teachers see their own
+  final String senderRole; 
+  final bool isAdmin;      
 
   SendNotificationDialog({required this.senderRole, this.isAdmin = false});
 
@@ -15,7 +15,6 @@ class _SendNotificationDialogState extends State<SendNotificationDialog> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
   
-  // Default topics - Add your college divisions here
   String _selectedTopic = 'all_campus';
   final List<String> _topics = ['all_campus', 'FY_Div_A', 'SY_Div_A', 'TY_Div_A'];
 
@@ -54,8 +53,8 @@ class _SendNotificationDialogState extends State<SendNotificationDialog> {
               await NotificationService.send(
                 title: _titleController.text,
                 body: _bodyController.text,
-                topic: _selectedTopic,
-                senderRole: widget.senderRole,
+                topics: [_selectedTopic],
+                senderName: widget.senderRole,
               );
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(

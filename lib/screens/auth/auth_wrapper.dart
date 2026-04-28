@@ -9,7 +9,6 @@ import '../admin/admin_panel.dart';
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
-  /// Fetches the user role from the 'users' collection using the email as the Doc ID.
   Future<String> _getUserRole(String email) async {
     try {
       DocumentSnapshot doc = await FirebaseFirestore.instance
@@ -18,7 +17,6 @@ class AuthWrapper extends StatelessWidget {
           .get();
       
       if (doc.exists && doc.data() != null) {
-        // Normalizes role string to handle database inconsistencies
         return (doc.get('role') as String).toLowerCase().trim();
       }
       return 'not_found'; 
@@ -31,29 +29,24 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      // 1. Listen to the Firebase Auth state
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         
-        // Handle initialization state
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _loadingScreen();
         }
 
-        // 2. AUTH CHECK: Redirect to Login if no active session
         if (!snapshot.hasData || snapshot.data == null) {
           return const LoginScreen();
         }
 
         final String? userEmail = snapshot.data!.email;
 
-        // Safety check for empty email profiles
         if (userEmail == null) {
           FirebaseAuth.instance.signOut();
           return const LoginScreen();
         }
 
-        // 3. ROLE FETCH: Determine which Dashboard to show
         return FutureBuilder<String>(
           key: ValueKey(snapshot.data!.uid), 
           future: _getUserRole(userEmail),
@@ -63,7 +56,6 @@ class AuthWrapper extends StatelessWidget {
               return _loadingScreen();
             }
 
-            // Handle Firestore fetch errors or missing user docs
             if (roleSnapshot.hasError || 
                 roleSnapshot.data == 'error' || 
                 roleSnapshot.data == 'not_found') {
@@ -72,7 +64,6 @@ class AuthWrapper extends StatelessWidget {
 
             final String role = roleSnapshot.data!;
 
-            // 4. NAVIGATION LOGIC
             switch (role) {
               case 'admin':
                 return const AdminPanel();

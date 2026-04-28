@@ -17,8 +17,6 @@ class LectureList extends StatelessWidget {
     required this.dateString,
   });
 
-  // --- HELPER METHODS ---
-
   Future<String> _getSubjectFullName(String id) async {
     try {
       var doc = await FirebaseFirestore.instance.collection('subjects').doc(id).get();
@@ -37,8 +35,6 @@ class LectureList extends StatelessWidget {
       return id;
     }
   }
-
-  // --- LOGIC METHODS ---
 
   void _handleDelete(BuildContext context, String docId, bool isExtra) {
     showDialog(
@@ -71,7 +67,6 @@ class LectureList extends StatelessWidget {
   }
 
   void _handleRestore(String docId) async {
-    // Finds and deletes the cancellation record to make the lecture active again
     var snap = await FirebaseFirestore.instance
         .collection('cancelled_lectures')
         .where('lectureId', isEqualTo: docId)
@@ -106,8 +101,6 @@ class LectureList extends StatelessWidget {
     });
   }
 
-  // --- UI COMPONENTS ---
-
   @override
   Widget build(BuildContext context) {
     final FirebaseFirestore db = FirebaseFirestore.instance;
@@ -123,7 +116,6 @@ class LectureList extends StatelessWidget {
 
         final cancelledIds = snapshot.data![2].docs.map((d) => d['lectureId'] as String).toSet();
         
-        // We keep all slots; we don't filter them out anymore.
         final allSlots = [...snapshot.data![0].docs, ...snapshot.data![1].docs];
 
         allSlots.sort((a, b) => (a['startTime'] ?? "").compareTo(b['startTime'] ?? ""));
@@ -152,7 +144,7 @@ class LectureList extends StatelessWidget {
                 String roomNo = isOnline ? "ONLINE" : (nameSnap.data?[1] ?? "...");
 
                 return Opacity(
-                  opacity: isCancelled ? 0.6 : 1.0, // Fade out if cancelled
+                  opacity: isCancelled ? 0.6 : 1.0, 
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
@@ -187,14 +179,12 @@ class LectureList extends StatelessWidget {
                           if (isExtra && !isCancelled) _buildExtraBadge(),
                           
                           if (isCancelled)
-                            // RESTORE BUTTON
                             IconButton(
                               icon: const Icon(Icons.restore, color: Colors.indigo),
                               onPressed: () => _handleRestore(doc.id),
                               tooltip: "Make Active",
                             )
                           else
-                            // OPTIONS MENU
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert, size: 20),
                               onSelected: (val) {

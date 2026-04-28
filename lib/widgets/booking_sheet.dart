@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
 
-// --- FIXED IMPORTS ---
 import '../services/notification_service.dart';
 import 'booking_logic.dart';
 
@@ -63,7 +62,6 @@ class _BookingSheetState extends State<BookingSheet> {
       return;
     }
 
-    // 1. Conflict Check
     String currentSem = _selectedYear == "SY" ? "Sem 6" : "Academic Sem";
     String? error = await _conflictHelper.checkAllConflicts(
       teacherId: widget.teacherId,
@@ -84,7 +82,6 @@ class _BookingSheetState extends State<BookingSheet> {
     }
 
     try {
-      // 2. Data Resolution
       String teacherTopicId = widget.teacherId;
       var tDoc = await _db.collection('users').doc(widget.teacherId).get();
       if (tDoc.exists) {
@@ -103,7 +100,6 @@ class _BookingSheetState extends State<BookingSheet> {
         roomName = rDoc.data()?['currentRoomNo'] ?? _selectedResourceId!;
       }
 
-      // 3. Prepare Data
       int startH = int.parse(_selectedSlot.split(':')[0]);
       String endTime = "${(startH + 1).toString().padLeft(2, '0')}:00";
 
@@ -133,7 +129,6 @@ class _BookingSheetState extends State<BookingSheet> {
         await _db.collection('extra_bookings').doc(widget.editDocId).update(bookingData);
       }
 
-      // 4. Trigger Push Notifications
       await NotificationService.send(
         title: "✨ Extra Lecture Added",
         body: "$subName for $_selectedYear Div $_selectedDiv at $_selectedSlot in $roomName.",

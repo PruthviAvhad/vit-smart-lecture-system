@@ -21,22 +21,17 @@ class TimetableExplorer extends StatelessWidget {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// --- UPDATED NOTIFICATION LOGIC ---
-  /// Now uses an array 'topics' to target both class and teacher simultaneously.
   static Future<void> _logToHistory({
     required String title,
     required String body,
-    required String classTopic, // e.g., "TY_B"
-    required String teacherId,  // e.g., "official_id_123"
+    required String classTopic, 
+    required String teacherId,  
   }) async {
-    // Construct the specific teacher topic
     String teacherTopic = "Teacher_$teacherId";
 
-    // 1. Log for the Students/Teachers (Targeted Topics)
     await _db.collection('notifications').add({
       'title': title,
       'body': body,
-      // CRITICAL FIX: Use 'topics' as an array for array-contains queries
       'topics': [classTopic, teacherTopic, 'all_campus'], 
       'senderRole': 'Admin',
       'senderName': 'System Admin',
@@ -44,7 +39,6 @@ class TimetableExplorer extends StatelessWidget {
       'category': 'Timetable Update',
     });
 
-    // 2. Log for Global Admin Oversight (Internal Log)
     await _db.collection('notifications').add({
       'title': "[System] $title",
       'body': "Targets: $classTopic, $teacherTopic | $body",
@@ -139,7 +133,7 @@ class TimetableExplorer extends StatelessWidget {
                     
                     if (confirm == true) {
                       String subName = await _fetchName('subjects', data['subjectId'], 'name');
-                      String classTopic = "${selectedYear}_$selectedDiv"; // Format: TY_B
+                      String classTopic = "${selectedYear}_$selectedDiv"; 
 
                       await _logToHistory(
                         title: "❌ Lecture Cancelled",
@@ -160,7 +154,6 @@ class TimetableExplorer extends StatelessWidget {
     );
   }
 
-  // --- CONFLICT VALIDATION ---
   static Future<String?> _validateBooking({
     required String teacherId,
     required String resourceId,
@@ -191,7 +184,6 @@ class TimetableExplorer extends StatelessWidget {
     return null;
   }
 
-  // --- EDIT / ADD DIALOG ---
   static void showEditDialog(BuildContext context, DocumentSnapshot? doc, String year, String div, String day, String? time, String sem, DateTime date) {
     bool isEdit = doc != null;
     Map<String, dynamic> data = isEdit ? (doc.data() as Map<String, dynamic>) : {};
@@ -262,7 +254,7 @@ class TimetableExplorer extends StatelessWidget {
 
                   String subName = await _fetchName('subjects', sSub, 'name');
                   String roomNo = await _fetchRoomNo(sRoom);
-                  String classTopic = "${year}_$div"; // Format: TY_B
+                  String classTopic = "${year}_$div"; 
 
                   if (isEdit) {
                     if (doc!.reference.path.contains('extra_bookings')) p['date'] = dateStr;
@@ -296,7 +288,6 @@ class TimetableExplorer extends StatelessWidget {
     );
   }
 
-  // --- UI HELPERS ---
   static Widget _buildResourceMonitor(String day, String time, String? currentRoom, Function(String) onSelect, {String? docId}) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('timetable').where('day', isEqualTo: day).where('startTime', isEqualTo: time).snapshots(),

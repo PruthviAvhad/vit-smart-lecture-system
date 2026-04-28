@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-// --- SERVICE & SCREEN IMPORTS ---
 import './services/notification_service.dart'; 
 import './screens/auth/login_screen.dart'; 
 import './screens/auth/auth_wrapper.dart'; 
 import './secrets.dart'; 
 
-// --- BACKGROUND MESSAGE HANDLER ---
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (Firebase.apps.isEmpty) {
@@ -27,10 +25,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
-  // 1. Ensure Flutter framework is ready
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 2. Initialize Firebase with your secrets
   await Firebase.initializeApp(
     options: FirebaseOptions(
       apiKey: AppSecrets.apiKey,
@@ -42,11 +38,9 @@ void main() async {
     ),
   );
 
-  // 3. Setup Notification Listeners
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await NotificationService.initNotifications();
 
-  // 4. Start the App
   runApp(const VITSmartApp());
 }
 
@@ -59,7 +53,6 @@ class VITSmartApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'VIT Smart Lecture System',
       
-      // --- THEME CONFIGURATION ---
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -69,7 +62,6 @@ class VITSmartApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: Colors.grey[50],
         
-        // AppBar Styling
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
@@ -83,14 +75,12 @@ class VITSmartApp extends StatelessWidget {
           ),
         ),
 
-        // --- ERROR FIXED: Correct data class name used here ---
         cardTheme: CardThemeData(
           elevation: 2,
           color: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
 
-        // Input Styling for TextFields
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
@@ -106,7 +96,6 @@ class VITSmartApp extends StatelessWidget {
         ),
       ),
 
-      // --- ROUTING STRATEGY ---
       home: const AuthWrapper(), 
       
       routes: {

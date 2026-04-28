@@ -1,16 +1,16 @@
 class Slot {
   final String id;
-  final String timetableId; // Linking to the active Semester
-  final String year;        // FE, SE, TE, BE
-  final String division;    // A, B, C
-  final String batch;       // All, 1, 2, 3
+  final String timetableId;
+  final String year;
+  final String division;
+  final String batch;
   final String room;
   final String teacherId;
   final String subject;
   final String startTime;
   final String endTime;
   final String day;
-  final String type;        // Regular, Extra, Rescheduled
+  final String type;
 
   Slot({
     required this.id, required this.timetableId, required this.year,

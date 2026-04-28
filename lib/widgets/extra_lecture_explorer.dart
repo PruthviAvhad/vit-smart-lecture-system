@@ -13,13 +13,11 @@ class _ExtraLectureExplorerState extends State<ExtraLectureExplorer> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   DateTime _selectedDate = DateTime.now();
   
-  // Adjusted to match your AdminPanel's naming convention
   String _selectedYear = "TY";
   String _selectedDiv = "B";
 
   @override
   Widget build(BuildContext context) {
-    // Ensure this format matches how you ADD extra lectures to Firestore
     String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
 
     return Column(
@@ -55,7 +53,6 @@ class _ExtraLectureExplorerState extends State<ExtraLectureExplorer> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Updated years to match AdminPanel
               Expanded(child: _filterDrop("Year", _selectedYear, ["FE", "SE", "SY", "TE", "TY", "BE"], (v) => setState(() => _selectedYear = v!))),
               const SizedBox(width: 8),
               Expanded(child: _filterDrop("Div", _selectedDiv, ["A", "B", "C", "D", "E"], (v) => setState(() => _selectedDiv = v!))),
@@ -119,7 +116,6 @@ class _ExtraLectureExplorerState extends State<ExtraLectureExplorer> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 6),
-                    // Resolved Teacher Name from Official ID
                     FutureBuilder<QuerySnapshot>(
                       future: _db.collection('users').where('officialId', isEqualTo: data['teacherId']).limit(1).get(),
                       builder: (context, userSnap) {

@@ -8,7 +8,6 @@ class AuthService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
-  /// Updated Sign In
   Future<bool> signIn(String email, String password) async {
     try {
       UserCredential result = await _auth.signInWithEmailAndPassword(
@@ -17,12 +16,11 @@ class AuthService {
       );
       
       if (result.user != null) {
-        // Fetch data to handle subscriptions immediately
         DocumentSnapshot doc = await _db.collection('users').doc(email.trim()).get();
         if (doc.exists) {
           Map<String, dynamic> userData = doc.data() as Map<String, dynamic>;
           await _handleNotificationSubscriptions(userData);
-          return true; // Success
+          return true;
         }
       }
       return false;
@@ -32,11 +30,9 @@ class AuthService {
     }
   }
 
-  /// Private helper for topic subscriptions
   Future<void> _handleNotificationSubscriptions(Map<String, dynamic> data) async {
     try {
       String role = data['role'] ?? 'student';
-      // Always subscribe everyone to all_campus
       await _fcm.subscribeToTopic("all_campus");
 
       if (role.toLowerCase() == 'teacher') {
@@ -49,7 +45,6 @@ class AuthService {
         String year = data['year'] ?? "";
         String div = data['division'] ?? "";
         if (year.isNotEmpty && div.isNotEmpty) {
-          // Matching your Firebase naming convention
           await _fcm.subscribeToTopic("${year}_Div_$div");
         }
       }
@@ -70,15 +65,13 @@ class AuthService {
     return 'student';
   }
 
-  /// IMPROVED SIGN OUT: Clears tokens/subscriptions to prevent mixed notifications
   Future<void> signOut() async {
     try {
-      // Best practice: Delete the FCM token so the next user gets a fresh start
       await _fcm.deleteToken(); 
       await _auth.signOut();
     } catch (e) {
       debugPrint("Logout Error: $e");
-      await _auth.signOut(); // Ensure signout happens even if FCM fails
+      await _auth.signOut();
     }
   }
 }

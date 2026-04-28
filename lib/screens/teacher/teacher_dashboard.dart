@@ -22,11 +22,9 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   String get _dateString => DateFormat('yyyy-MM-dd').format(_selectedDate);
   String get _formattedDate => DateFormat('dd MMM, yyyy').format(_selectedDate);
 
-  // --- IMPROVED LOGOUT METHOD ---
   Future<void> _handleLogout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
-      // Clears all history and forces a return to the AuthWrapper/Login
       Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
     }
   }
@@ -72,7 +70,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => NotificationInbox(
-                        // Topic includes their ID to see messages meant for them specifically
                         userTopic: "Teacher_$teacherId", 
                         userRole: "Teacher", 
                       ),
@@ -82,7 +79,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               ),
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.white),
-                onPressed: () => _handleLogout(context), // Use the new logout logic
+                onPressed: () => _handleLogout(context), 
               )
             ],
           ),
@@ -113,9 +110,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   ),
                 ),
 
-                // Wrap LectureList in a ConstrainedBox or keep the SizedBox
                 SizedBox(
-                  height: 400, // Fixed height or use LayoutBuilder
+                  height: 400, 
                   child: LectureList(
                     teacherId: teacherId,
                     teacherName: teacherName,
@@ -123,7 +119,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     dateString: _dateString,
                   ),
                 ),
-                const SizedBox(height: 80), // Padding for the FAB
+                const SizedBox(height: 80),
               ],
             ),
           ),

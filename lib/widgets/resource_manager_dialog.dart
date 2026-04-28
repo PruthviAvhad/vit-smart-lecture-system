@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// --- FIXED IMPORT ---
-// Using relative path to ensure the compiler finds your service file correctly
 import '../services/notification_service.dart';
 
 class ResourceManagerDialog extends StatefulWidget {
@@ -55,24 +53,20 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
     super.dispose();
   }
 
-  // --- IMPROVED SAVE LOGIC ---
   Future<void> _saveRoom(String resId, String val) async {
     final cleanVal = val.trim();
     if (cleanVal.isEmpty) return;
     
     try {
-      // 1. Update the Mapping in Firestore
       await _db.collection('resources').doc(resId).set(
         {'currentRoomNo': cleanVal}, 
         SetOptions(merge: true)
       );
 
-      // 2. Trigger Push Notification via static Service
-      // Updated to match your NotificationService.send signature
       await NotificationService.send(
         title: "🏫 Room Location Update",
         body: "Resource $resId is now mapped to Room $cleanVal.",
-        topics: ["Admin_Updates"], // Sending to an admin/all-user topic
+        topics: ["Admin_Updates"], 
         category: "System Update",
         senderName: "Resource Manager",
       );
@@ -102,7 +96,6 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Filter out "Online" as it doesn't need a physical room mapping
     final filteredResources = widget.allResources.where((r) => r != "Online").toList();
 
     return AlertDialog(
@@ -141,7 +134,7 @@ class _ResourceManagerDialogState extends State<ResourceManagerDialog> {
                             hintText: "Assign Room (e.g. 1316A)",
                             isDense: true,
                             filled: true,
-                            fillColor: Colors.grey.shade50,
+                            fillColor: Colors.grey[50],
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
