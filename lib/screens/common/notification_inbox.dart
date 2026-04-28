@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class NotificationInbox extends StatelessWidget {
-  final String userTopic; 
-  final String userRole;  
+  final String userTopic;
+  final String userRole;
 
   const NotificationInbox({
     super.key,
@@ -12,7 +12,6 @@ class NotificationInbox extends StatelessWidget {
     required this.userRole,
   });
 
-  
   String _cleanText(String text) {
     final emojiPattern = RegExp(
       r'[\u{1f300}-\u{1f5ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{1f700}-\u{1f77f}\u{1f900}-\u{1f9ff}\u{1f1e6}-\u{1f1ff}]',
@@ -21,11 +20,9 @@ class NotificationInbox extends StatelessWidget {
     return text.replaceAll(emojiPattern, '').trim();
   }
 
-  
   IconData _getCategoryIcon(String? category) {
     final cat = category?.toLowerCase() ?? '';
-    
-  
+
     switch (cat) {
       case 'lecture update':
       case 'extra lecture':
@@ -49,7 +46,7 @@ class NotificationInbox extends StatelessWidget {
 
     if (userRole != "Admin") {
       notificationQuery = notificationQuery.where('topics', arrayContainsAny: [
-        userTopic, 
+        userTopic,
         'all_campus',
         if (userRole == "Teacher") 'all_teachers',
       ]);
@@ -107,10 +104,9 @@ class NotificationInbox extends StatelessWidget {
 
     final String cleanTitle = _cleanText(data['title'] ?? "Notice");
     final String category = data['category'] ?? 'General';
-    
-   
-    final Color iconColor = category.toLowerCase().contains('cancelled') 
-        ? Colors.redAccent 
+
+    final Color iconColor = category.toLowerCase().contains('cancelled')
+        ? Colors.redAccent
         : Colors.indigo;
 
     return Card(
@@ -153,8 +149,8 @@ class NotificationInbox extends StatelessWidget {
                     Text(
                       "From: ${data['senderName'] ?? 'Admin'}",
                       style: const TextStyle(
-                        fontSize: 11, 
-                        fontWeight: FontWeight.bold, 
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
                         color: Colors.indigo
                       ),
                     ),
