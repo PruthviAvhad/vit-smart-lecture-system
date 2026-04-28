@@ -12,6 +12,35 @@ class NotificationInbox extends StatelessWidget {
     required this.userRole,
   });
 
+  IconData _getCategoryIcon(String? category) {
+    switch (category) {
+      case 'Lecture Update':
+        return Icons.event_available;
+      case 'Timetable Update':
+        return Icons.calendar_today;
+      case 'Urgent':
+        return Icons.priority_high;
+      case 'Global':
+      case 'General':
+        return Icons.campaign;
+      case 'System Update':
+        return Icons.system_update_alt;
+      default:
+        return Icons.notifications_active;
+    }
+  }
+
+  String _cleanTitle(String title) {
+    String cleaned = title.replaceAll(RegExp(r'[\u{1f300}-\u{1f5ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{1f700}-\u{1f77f}\u{1f780}-\u{1f7ff}\u{1f800}-\u{1f8ff}\u{1f900}-\u{1f9ff}\u{1fa00}-\u{1faff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}]', unicode: true), '').trim();
+    
+    if (cleaned.isEmpty) return "Notice";
+
+    return cleaned.split(' ').map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     Query notificationQuery = FirebaseFirestore.instance.collection('notifications');
@@ -74,6 +103,9 @@ class NotificationInbox extends StatelessWidget {
       time = (data['timestamp'] as Timestamp).toDate();
     }
 
+    String category = data['category'] ?? 'General';
+    String title = _cleanTitle(data['title'] ?? "Notice");
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       shape: RoundedRectangleBorder(
@@ -83,16 +115,16 @@ class NotificationInbox extends StatelessWidget {
       elevation: 0.5,
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: const CircleAvatar(
-          backgroundColor: Color(0xFFE8EAF6),
-          child: Icon(Icons.notifications_active, color: Colors.indigo, size: 20),
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFE8EAF6), 
+          child: Icon(_getCategoryIcon(category), color: Colors.indigo, size: 20),
         ),
         title: Text(
-          data['title'] ?? "Notice",
+          title,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         subtitle: Text(
-          "${data['category'] ?? 'General'} • ${DateFormat('hh:mm a').format(time)}",
+          "$category • ${DateFormat('hh:mm a').format(time)}",
           style: const TextStyle(fontSize: 11, color: Colors.grey),
         ),
         children: [
